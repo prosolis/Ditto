@@ -8,9 +8,9 @@ I built this because I'm planning to move internationally with a large collectio
 
 - **Google Lens** visual identification via SerpAPI
 - **Local LLM** (Qwen 2.5:32b) for intelligent data synthesis and regional variant detection
-- **PriceCharting API** for authoritative video game, LEGO, and comic book pricing
+- **PriceCharting API** for authoritative video game, LEGO, comic book, and trading card pricing
 - **QR-coded tote tracking** for physical organization
-- **Automated file organization** with duplicate handling
+- **Automated file organization** with sequence-numbered filenames
 - **Image auto-cropping** to remove scanner backgrounds
 
 Perfect for collectors, expats, or anyone needing professional inventory documentation for international customs, insurance claims, or estate planning.
@@ -25,7 +25,7 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 - ✅ **Intelligent item identification** - Google Lens + LLM synthesis
 - ✅ **Regional variant detection** - *Mostly* Distinguishes NTSC-J, NTSC-U, PAL versions
 - ✅ **Platform-based condition defaults** - Generally acceptable assumptions (cartridge vs disc systems) given that newer systems tend to have plastic boxes which folks tend to keep vs cardboard ones of the 8/16-bit generation.
-- ✅ **Duplicate handling** - Auto-increments filename counters for duplicates
+- ✅ **Duplicate handling** - Sequence numbers in filenames uniquely identify each item, even duplicates
 - ✅ **Validation & auto-correction** - Catches and fixes LLM output errors
 - ✅ **Manual review flagging** - Highlights uncertain identifications
 
@@ -42,7 +42,7 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 
 - `inventory.json` - Complete detailed records with AI analysis
 - `inventory.csv` - Simplified spreadsheet summary
-- `/TOTE-XXX/` - Organized, cropped, renamed images by container
+- `/TOTE-XXX/ItemName_001_TOTE-XXX.jpg` - Organized, cropped, sequence-numbered images by container
 - `seal_tracking.json` - Physical security seal associations
 
 ## Use Cases
@@ -236,6 +236,9 @@ PRICECHARTING_API_KEY=optional
 ```env
 SCAN_DIR=/path/to/scanner/output
 ORGANIZED_DIR=/path/to/inventory
+INVENTORY_JSON=organized/inventory.json    # Override if stored elsewhere
+INVENTORY_CSV=organized/inventory.csv      # Override if stored elsewhere
+BACKUP_DIR=organized/backups               # Override if stored elsewhere
 ```
 
 **Processing:**
@@ -267,7 +270,7 @@ Complete detailed record per item:
   "tote_id": "TOTE-001",
   "item_sequence": 42,
   "item_name": "Super Metroid",
-  "image_file": "Super_Metroid_TOTE-001.jpg",
+  "image_file": "Super_Metroid_042_TOTE-001.jpg",
   "ai_analysis": {
     "item_name": "Super Metroid",
     "platform": "SNES",
@@ -308,9 +311,9 @@ Matches PriceCharting listings to the correct regional variant for accurate pric
 
 Smart assumptions based on gaming platform:
 
-- **8/16-bit cartridges** (NES, SNES, Genesis, etc.) → Default: LOOSE_CART
-- **Disc-based systems** (PlayStation, Xbox, etc.) → Default: COMPLETE_IN_BOX
-- **Modern cartridges** (DS, 3DS, Switch) → Default: COMPLETE_IN_BOX
+- **8/16-bit cartridges** (NES, SNES, Genesis, Master System, Game Boy/GBC/GBA, TurboGrafx-16, Atari, Neo Geo, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear) → Default: LOOSE_CART
+- **Disc-based systems** (PlayStation, Xbox, GameCube, Saturn, Dreamcast, Sega CD, 3DO, CDi, PC Engine CD) → Default: COMPLETE_IN_BOX
+- **Modern cartridges** (DS, 3DS, Switch, PS Vita) → Default: COMPLETE_IN_BOX
 
 Overrides defaults only when search results explicitly indicate different condition.
 
@@ -356,6 +359,7 @@ python update_pricecharting.py --categories "Video Game Software" "LEGO"
 ### Remove Erroneous Entries
 
 ```bash
+# Sequence number is in the filename: ItemName_054_TOTE-002.jpg → sequence 54
 python remove_item.py TOTE-002 54
 # Prompts for confirmation
 # Creates backup before removal
@@ -409,7 +413,17 @@ find organized/TOTE-* -type f \( -iname "*.jpg" -o -iname "*.png" \) -exec conve
 
 ### Video Game Platforms
 
-NES, SNES, N64, GameCube, Wii, Wii U, Switch, Game Boy, GBA, DS, 3DS, PlayStation (1-5), PSP, Vita, Xbox (all), Genesis, Saturn, Dreamcast, TurboGrafx-16, Atari, and more.
+**Nintendo:** NES, Famicom, SNES, Super Famicom, N64, GameCube, Wii, Wii U, Switch, Game Boy, Game Boy Color, Game Boy Advance, Nintendo DS, Nintendo 3DS, Virtual Boy
+
+**PlayStation:** PS1, PS2, PS3, PS4, PS5, PSP, PS Vita
+
+**Xbox:** Xbox, Xbox 360, Xbox One, Xbox Series X
+
+**Sega:** Master System, Genesis/Mega Drive, Game Gear, Saturn, Dreamcast, Sega CD, Sega 32X
+
+**SNK:** Neo Geo AES, Neo Geo MVS, Neo Geo Pocket, Neo Geo Pocket Color
+
+**Other:** TurboGrafx-16/PC Engine, WonderSwan, WonderSwan Color, 3DO, CDi, Atari (2600, 7800, Jaguar, Lynx)
 
 ### Categories
 
@@ -419,6 +433,7 @@ NES, SNES, N64, GameCube, Wii, Wii U, Switch, Game Boy, GBA, DS, 3DS, PlayStatio
 - Handheld Game Systems
 - LEGO Sets
 - Comic Books
+- Trading Cards
 - Electronics
 - Collectibles
 
@@ -440,9 +455,9 @@ Check ImageMagick is installed: `convert --version`
 
 Increase `OLLAMA_TIMEOUT` in `.env` or use faster model.
 
-### Duplicate tote sequence numbers
+### Sequence number gaps after removing items
 
-Fixed in latest version - uses max sequence, not count.
+This is expected. Sequence numbers are immutable IDs baked into filenames (`ItemName_003_TOTE-001.jpg`). Gaps after removal are harmless — the scanner uses the highest existing sequence to determine the next number.
 
 ### PriceCharting not finding items
 
@@ -480,7 +495,13 @@ The system generates inventory suitable for international customs:
 ├── update_pricecharting.py   # Price updates
 ├── remove_item.py            # Item removal
 ├── .env.example              # Config template
-└── README.md                 # Documentation
+├── README.md                 # Documentation
+└── organized/                 # Output directory (ORGANIZED_DIR)
+    ├── inventory.json         # Complete inventory data
+    ├── inventory.csv          # Spreadsheet summary
+    ├── backups/               # Pre-modification backups
+    └── TOTE-XXX/              # Per-tote image directories
+        └── ItemName_001_TOTE-XXX.jpg
 ```
 
 ### Contributing
