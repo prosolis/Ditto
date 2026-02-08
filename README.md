@@ -124,7 +124,7 @@ cd inventory-system
 ### 2. Install Python Dependencies
 
 ```bash
-pip install requests python-dotenv watchdog pyzbar Pillow --break-system-packages
+apt install python3-requests python3-dotenv python3-watchdog python3-pyzbar python3-willow
 ```
 
 ### 3. Install System Dependencies
