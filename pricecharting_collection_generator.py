@@ -71,14 +71,21 @@ CARD_CATEGORIES = {'Trading Cards'}
 # FORMAT FUNCTIONS
 # ========================================
 
+CONDITION_MAP = {
+    'LOOSE_CART': 'Item Only',
+    'COMPLETE_IN_BOX': 'CIB',
+    'NEW_SEALED': 'Sealed',
+}
+
+
 def format_video_game(item):
     """
-    Format: {name} [PAL] {platform} [Sealed]
+    Format: {name} [PAL] {platform} [condition]
 
     Examples:
-        Call of Duty Black Ops PS3
+        Call of Duty Black Ops PS3 Item Only
         Mario 2 NES Sealed
-        Donkey Kong 3 PAL NES
+        Donkey Kong 3 PAL NES CIB
     """
     ai = item['ai_analysis']
     parts = [ai['item_name']]
@@ -89,8 +96,9 @@ def format_video_game(item):
     if ai.get('platform'):
         parts.append(ai['platform'])
 
-    if ai.get('pricing_basis') == 'NEW_SEALED':
-        parts.append('Sealed')
+    condition = CONDITION_MAP.get(ai.get('pricing_basis', ''))
+    if condition:
+        parts.append(condition)
 
     return ' '.join(parts)
 
