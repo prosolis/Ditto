@@ -72,7 +72,6 @@ CARD_CATEGORIES = {'Trading Cards'}
 # ========================================
 
 CONDITION_MAP = {
-    'LOOSE_CART': 'Item Only',
     'COMPLETE_IN_BOX': 'CIB',
     'NEW_SEALED': 'Sealed',
 }
@@ -80,18 +79,18 @@ CONDITION_MAP = {
 
 def format_video_game(item):
     """
-    Format: {name} [PAL] {platform} [condition]
+    Format: {name} {platform} [condition]
+
+    Condition is only appended for CIB or Sealed. Loose (Item Only) is
+    implied by omission on PriceCharting.
 
     Examples:
-        Call of Duty Black Ops PS3 Item Only
+        Call of Duty Black Ops PS3
         Mario 2 NES Sealed
-        Donkey Kong 3 PAL NES CIB
+        Donkey Kong 3 NES CIB
     """
     ai = item['ai_analysis']
     parts = [ai['item_name']]
-
-    if ai.get('region') == 'PAL':
-        parts.append('PAL')
 
     if ai.get('platform'):
         parts.append(ai['platform'])
