@@ -81,7 +81,7 @@ LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
 
 **Scripts:**
 
-1. `inventory_scanner.py` - Live automated scanning
+1. `automated_inventory.py` - Live automated scanning
 2. `batch_inventory.py` - Batch process manual photos
 3. `generate_labels.py` - Create QR-coded tote labels
 4. `manage_seals.py` - Track security seals
@@ -195,7 +195,7 @@ ngrok http 8000
 ollama run qwen2.5:32b
 
 # Terminal 4: Start inventory scanner
-python inventory_scanner.py
+python automated_inventory.py
 ```
 
 ### Scanning Workflow
@@ -473,7 +473,7 @@ The system generates inventory suitable for international customs:
 
 ```
 .
-├── inventory_scanner.py      # Live scanning
+├── automated_inventory.py      # Live scanning
 ├── batch_inventory.py         # Batch processing
 ├── generate_labels.py         # QR label generation
 ├── manage_seals.py           # Seal tracking
