@@ -107,6 +107,8 @@ def query_pricecharting(item_name, category=None, platform=None, max_results=Non
             search_query = f"lego {item_name}"
         elif category == "Comic Books":
             search_query = f"comic {item_name}"
+        elif category == "Trading Cards":
+            search_query = item_name
 
         # Search
         params = {"t": PRICECHARTING_API_KEY, "q": search_query}
@@ -162,7 +164,8 @@ def is_pricecharting_eligible(item):
     category = item['ai_analysis'].get('category', '')
 
     return category in ['Video Game Software', 'Video Game Console',
-                       'Video Game Accessory', 'LEGO', 'Comic Books']
+                       'Video Game Accessory', 'LEGO', 'Comic Books',
+                       'Trading Cards']
 
 def select_best_price(item, pricecharting_results):
     """
