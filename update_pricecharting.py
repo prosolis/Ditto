@@ -82,24 +82,48 @@ def query_pricecharting(item_name, category=None, platform=None, max_results=Non
 
         if category == "Video Game Software" and platform:
             platform_map = {
-                "NES": "nes", "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                # Nintendo - Home Consoles
+                "NES": "nes", "Famicom": "famicom",
+                "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                "Super Famicom": "super-famicom",
                 "Nintendo 64": "nintendo-64", "N64": "nintendo-64",
                 "GameCube": "gamecube", "Wii": "wii", "Wii U": "wii-u",
                 "Switch": "nintendo-switch",
+                # Nintendo - Handhelds
                 "Game Boy": "gameboy", "Game Boy Color": "gameboy-color",
                 "Game Boy Advance": "gameboy-advance",
                 "Nintendo DS": "nintendo-ds", "Nintendo 3DS": "nintendo-3ds",
+                "Virtual Boy": "virtual-boy",
+                # PlayStation
                 "PlayStation": "playstation", "PS1": "playstation",
                 "PlayStation 2": "playstation-2", "PS2": "playstation-2",
                 "PlayStation 3": "playstation-3", "PS3": "playstation-3",
                 "PlayStation 4": "playstation-4", "PS4": "playstation-4",
                 "PlayStation 5": "playstation-5", "PS5": "playstation-5",
                 "PSP": "psp", "PS Vita": "playstation-vita",
+                # Xbox
                 "Xbox": "xbox", "Xbox 360": "xbox-360",
                 "Xbox One": "xbox-one", "Xbox Series X": "xbox-series-x",
+                # Sega
                 "Sega Genesis": "sega-genesis", "Genesis": "sega-genesis",
+                "Mega Drive": "sega-mega-drive",
+                "Sega Master System": "sega-master-system",
+                "Game Gear": "game-gear",
                 "Sega Saturn": "sega-saturn", "Saturn": "sega-saturn",
-                "Sega Dreamcast": "sega-dreamcast", "Dreamcast": "sega-dreamcast"
+                "Sega Dreamcast": "sega-dreamcast", "Dreamcast": "sega-dreamcast",
+                "Sega CD": "sega-cd", "Sega 32X": "sega-32x",
+                # SNK / Neo Geo
+                "Neo Geo AES": "neo-geo", "Neo Geo MVS": "neo-geo",
+                "Neo Geo Pocket": "neo-geo-pocket",
+                "Neo Geo Pocket Color": "neo-geo-pocket-color",
+                # NEC
+                "TurboGrafx-16": "turbografx-16", "PC Engine": "pc-engine",
+                # Bandai
+                "WonderSwan": "wonderswan", "WonderSwan Color": "wonderswan-color",
+                # Other
+                "3DO": "3do", "CDi": "cd-i",
+                "Atari 2600": "atari-2600", "Atari 7800": "atari-7800",
+                "Atari Jaguar": "atari-jaguar", "Atari Lynx": "atari-lynx",
             }
             pc_platform = platform_map.get(platform, platform.lower().replace(" ", "-"))
             search_query = f"{item_name} {pc_platform}"
