@@ -269,8 +269,15 @@ def should_check_pricecharting(google_results):
     
     # Comic book indicators
     is_comic = "comic" in first_match or any(x in first_match for x in ["#", "issue", "marvel", "dc comics", "image comics"])
-    
-    if not (is_game or is_lego or is_comic):
+
+    # Trading card indicators
+    is_card = any(x in first_match for x in [
+        "pokemon", "magic the gathering", "mtg", "yu-gi-oh", "yugioh",
+        "trading card", "tcg", "baseball card", "sports card",
+        "topps", "panini", "upper deck", "psa", "beckett", "graded card"
+    ])
+
+    if not (is_game or is_lego or is_comic or is_card):
         return False, None, None, None
     
     # Extract potential name and details
@@ -302,6 +309,8 @@ def should_check_pricecharting(google_results):
         category = "LEGO"
     elif is_comic:
         category = "Comic Books"
+    elif is_card:
+        category = "Trading Cards"
     
     return True, potential_name, category, platform
 
@@ -365,14 +374,16 @@ def query_pricecharting(item_name, category=None, platform=None):
             search_query = f"lego {item_name}"
         elif category == "Comic Books":
             search_query = f"comic {item_name}"
-        
+        elif category == "Trading Cards":
+            search_query = item_name
+
         # Search
         params = {"t": PRICECHARTING_API_KEY, "q": search_query}
         response = requests.get("https://www.pricecharting.com/api/products", params=params, timeout=10)
-        
+
         if not response.ok:
             return None
-        
+
         data = response.json()
         products = data.get('products', [])
         
@@ -486,6 +497,23 @@ def validate_inventory_item(data):
     if not data['item_name'] or data['item_name'].strip() == '':
         raise ValueError("item_name cannot be empty")
     
+    # Validate new optional fields (grade, issue_number, grader, year)
+    if data.get('issue_number') is not None and not isinstance(data['issue_number'], str):
+        # Auto-convert integers to strings
+        data['issue_number'] = str(data['issue_number'])
+
+    if data.get('year') is not None:
+        if not isinstance(data['year'], (int, float)):
+            raise ValueError(f"year must be integer or null, got {type(data['year'])}")
+        data['year'] = int(data['year'])
+
+    if data.get('grade') is not None:
+        if not isinstance(data['grade'], (int, float)):
+            raise ValueError(f"grade must be number or null, got {type(data['grade'])}")
+
+    if data.get('grader') is not None and not isinstance(data['grader'], str):
+        raise ValueError(f"grader must be string or null, got {type(data['grader'])}")
+
     # Validate pricecharting_match_used if present (with auto-fix for hallucinated values)
     if data.get('pricecharting_match_used') is not None:
         match_value = data['pricecharting_match_used']
@@ -555,7 +583,11 @@ Analyze search results and return JSON:
   "pricecharting_match_used": 1-{PRICECHARTING_MAX_RESULTS} or null,
   "pricecharting_match_confidence": "HIGH/MEDIUM/LOW/NONE",
   "manual_review_recommended": false,
-  "manual_review_reason": ""
+  "manual_review_reason": "",
+  "issue_number": "Comic issue or card number as string (e.g., '13', '4') or null",
+  "year": "Publication or release year as integer (e.g., 1939, 2023) or null",
+  "grade": "Numerical grade if professionally graded (e.g., 8, 9.5) or null",
+  "grader": "Grading company (CGC, CBCS, PGX, PSA, BGS, SGC) or null"
 }}
 
 REGIONAL IDENTIFICATION (from Google search result TEXT):
@@ -627,7 +659,7 @@ COMIC BOOK GRADING:
 - If no grade info available, set to null
 
 CATEGORIES:
-Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Electronics, Collectibles
+Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles
 
 PERSONAL_EFFECT_ELIGIBLE:
 - true: typical consumer items for personal use
@@ -637,6 +669,22 @@ MANUAL REVIEW:
 - Flag if condition drastically affects value (10x+)
 - Flag if regional variant uncertain
 - Flag if conflicting Google results
+
+GRADING AND NUMBERING (mostly for Comics and Trading Cards):
+- issue_number: Comic issue number or trading card number (string). null for other categories.
+- year: Publication or release year (integer). null if unknown or not applicable.
+- grade: Numerical grade if item is professionally graded (e.g., 8, 9.5). null if ungraded.
+- grader: Grading company name. null if ungraded.
+  Comics: CGC, CBCS, PGX
+  Trading Cards: PSA, BGS, SGC, CGC
+- Look for grading slabs/cases, grade labels, and certification numbers in search results.
+- If search results mention a grade or grading company, include them.
+
+TRADING CARDS:
+- Category "Trading Cards" for: Pokemon, Magic: The Gathering, Yu-Gi-Oh!, sports cards (baseball, basketball, football, hockey), etc.
+- item_name should include the card name AND set name (e.g., "Charizard Pokemon Base Set")
+- issue_number is the card number within the set
+- platform field should be null for trading cards
 
 Return ONLY valid JSON."""
 
