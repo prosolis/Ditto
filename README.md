@@ -117,8 +117,8 @@ LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/inventory-system.git
-cd inventory-system
+git clone https://github.com/prosolis/Ditto.git
+cd Ditto
 ```
 
 ### 2. Install Python Dependencies
