@@ -248,8 +248,17 @@ def should_check_pricecharting(google_results):
     first_match = visual_matches[0].get('title', '').lower()
     
     # Video game indicators
-    game_platforms = ["xbox", "playstation", "nintendo", "ps1", "ps2", "ps3", "ps4", "ps5", 
-                     "wii", "switch", "nes", "snes", "n64", "gamecube", "genesis", "sega"]
+    game_platforms = ["xbox", "xbox 360", "xbox one", "xbox series",
+                     "playstation", "ps1", "ps2", "ps3", "ps4", "ps5", "psp", "ps vita", "vita",
+                     "wii", "wii u", "switch", "nes", "famicom", "snes", "super famicom",
+                     "n64", "gamecube", "game boy", "gameboy", "gba", "game boy advance",
+                     "game boy color", "gbc", "ds", "3ds", "virtual boy",
+                     "genesis", "mega drive", "master system", "game gear",
+                     "saturn", "dreamcast", "sega cd", "sega 32x",
+                     "neo geo", "neo-geo", "neogeo", "aes", "mvs",
+                     "neo geo pocket", "wonderswan",
+                     "turbografx", "pc engine", "pc-engine",
+                     "3do", "cdi", "cd-i", "atari"]
     game_keywords = ["game", "video game", "cartridge"]
     
     is_game = any(platform in first_match for platform in game_platforms) or \
@@ -280,8 +289,19 @@ def should_check_pricecharting(google_results):
     if is_game:
         category = "Video Game Software"
         # Try to detect platform
-        for plat in ["Xbox 360", "Xbox One", "Xbox Series X", "PS5", "PS4", "PS3", "PS2", "PS1",
-                     "Switch", "Wii U", "Wii", "GameCube", "N64", "SNES", "NES", "Genesis"]:
+        for plat in ["Xbox Series X", "Xbox One", "Xbox 360", "Xbox",
+                     "PS5", "PS4", "PS3", "PS2", "PS1", "PSP", "PS Vita",
+                     "Switch", "Wii U", "Wii", "GameCube", "N64", "SNES", "NES",
+                     "Virtual Boy",
+                     "Game Boy Advance", "Game Boy Color", "Game Boy",
+                     "Nintendo 3DS", "Nintendo DS",
+                     "Genesis", "Sega Master System", "Game Gear",
+                     "Sega Saturn", "Sega Dreamcast", "Sega CD", "Sega 32X",
+                     "Neo Geo AES", "Neo Geo MVS", "Neo Geo Pocket Color", "Neo Geo Pocket",
+                     "WonderSwan Color", "WonderSwan",
+                     "TurboGrafx-16", "PC Engine",
+                     "3DO", "CDi",
+                     "Atari 2600", "Atari 7800", "Atari Jaguar", "Atari Lynx"]:
             if plat.lower() in first_match:
                 platform = plat
                 break
@@ -305,26 +325,48 @@ def query_pricecharting(item_name, category=None, platform=None):
         
         if category == "Video Game Software" and platform:
             platform_map = {
-                "NES": "nes", "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                # Nintendo - Home Consoles
+                "NES": "nes", "Famicom": "famicom",
+                "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                "Super Famicom": "super-famicom",
                 "Nintendo 64": "nintendo-64", "N64": "nintendo-64",
                 "GameCube": "gamecube", "Wii": "wii", "Wii U": "wii-u",
                 "Switch": "nintendo-switch",
+                # Nintendo - Handhelds
                 "Game Boy": "gameboy", "Game Boy Color": "gameboy-color",
                 "Game Boy Advance": "gameboy-advance",
                 "Nintendo DS": "nintendo-ds", "Nintendo 3DS": "nintendo-3ds",
+                "Virtual Boy": "virtual-boy",
+                # PlayStation
                 "PlayStation": "playstation", "PS1": "playstation",
                 "PlayStation 2": "playstation-2", "PS2": "playstation-2",
                 "PlayStation 3": "playstation-3", "PS3": "playstation-3",
                 "PlayStation 4": "playstation-4", "PS4": "playstation-4",
                 "PlayStation 5": "playstation-5", "PS5": "playstation-5",
                 "PSP": "psp", "PS Vita": "playstation-vita",
+                # Xbox
                 "Xbox": "xbox", "Xbox 360": "xbox-360",
                 "Xbox One": "xbox-one", "Xbox Series X": "xbox-series-x",
+                # Sega
                 "Sega Genesis": "sega-genesis", "Genesis": "sega-genesis",
+                "Mega Drive": "sega-mega-drive",
+                "Sega Master System": "sega-master-system",
+                "Game Gear": "game-gear",
                 "Sega Saturn": "sega-saturn", "Saturn": "sega-saturn",
                 "Sega Dreamcast": "sega-dreamcast", "Dreamcast": "sega-dreamcast",
-                "Sega Master System": "sega-master-system",
-                "Sega CD": "sega-cd", "Sega 32X": "sega-32x"
+                "Sega CD": "sega-cd", "Sega 32X": "sega-32x",
+                # SNK / Neo Geo
+                "Neo Geo AES": "neo-geo", "Neo Geo MVS": "neo-geo",
+                "Neo Geo Pocket": "neo-geo-pocket",
+                "Neo Geo Pocket Color": "neo-geo-pocket-color",
+                # NEC
+                "TurboGrafx-16": "turbografx-16", "PC Engine": "pc-engine",
+                # Bandai
+                "WonderSwan": "wonderswan", "WonderSwan Color": "wonderswan-color",
+                # Other
+                "3DO": "3do", "CDi": "cd-i",
+                "Atari 2600": "atari-2600", "Atari 7800": "atari-7800",
+                "Atari Jaguar": "atari-jaguar", "Atari Lynx": "atari-lynx",
             }
             pc_platform = platform_map.get(platform, platform.lower().replace(" ", "-"))
             search_query = f"{item_name} {pc_platform}"
@@ -532,7 +574,8 @@ Analyze search results and return JSON:
   "value_range_max": 0.00,
   "price_source": "Which sources used",
   "pricing_basis": "COMPLETE_IN_BOX/LOOSE_CART/LOOSE_DISC/NEW_SEALED/LOOSE_ACCESSORY/CONSOLE_ONLY/COMPLETE_CONSOLE/HANDHELD_ONLY/COMPLETE_HANDHELD/USED",
-  "category": "Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles, etc.",
+  "category": "Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Electronics, Collectibles, etc.",
+  "comic_grade": null,
   "condition_notes": "Brief notes",
   "variant_notes": "Important variants, editions, regional differences",
   "personal_effect_eligible": true,
@@ -580,10 +623,12 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 
 **8-BIT/16-BIT CARTRIDGES (default: LOOSE_CART):**
 - NES, SNES, Genesis, Master System, Game Boy/GBC/GBA, TurboGrafx-16, Atari
+- Neo Geo AES/MVS, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear
 - Override only if search explicitly states "complete", "CIB", "sealed"
 
 **DISC-BASED (default: COMPLETE_IN_BOX):**
 - PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games
+- 3DO, CDi, PC Engine CD
 - Override only if search says "disc only" or "no case"
 
 **MODERN CARTRIDGES (default: COMPLETE_IN_BOX):**
@@ -606,6 +651,12 @@ PRICECHARTING MATCHING:
 - Set pricecharting_match_confidence: HIGH (clear match), MEDIUM (uncertain), LOW (questionable), NONE (no match)
 - Use appropriate price: LOOSE_CART→loose_price, COMPLETE_IN_BOX→cib_price, NEW_SEALED→new_price
 - If regional mismatch, set to null and warn
+
+COMIC BOOK GRADING:
+- comic_grade is a float on the 10-point scale (e.g., 8.0, 9.2, 9.8)
+- Set comic_grade only for Comic Books category, null for everything else
+- If grade is mentioned in search results, use that value
+- If no grade info available, set to null
 
 CATEGORIES:
 Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles
