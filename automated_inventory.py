@@ -772,18 +772,8 @@ def process_item(image_path, tote_info, item_sequence):
         tote_dir.mkdir(parents=True, exist_ok=True)
         
         item_name_safe = sanitize_filename(analysis['item_name'])
-        base_filename = f"{item_name_safe}_{tote_info['tote_id_safe']}"
-        new_filename = f"{base_filename}{image_path.suffix}"
+        new_filename = f"{item_name_safe}_{item_sequence:03d}_{tote_info['tote_id_safe']}{image_path.suffix}"
         new_path = tote_dir / new_filename
-        
-        # Handle duplicate filenames by adding counter
-        if new_path.exists():
-            counter = 2
-            while new_path.exists():
-                new_filename = f"{base_filename}_{counter}{image_path.suffix}"
-                new_path = tote_dir / new_filename
-                counter += 1
-            print(f"    ⚠️  Duplicate item name - added counter: _{counter-1}")
         
         shutil.move(image_path, new_path)
         

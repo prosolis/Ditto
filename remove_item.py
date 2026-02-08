@@ -39,13 +39,6 @@ INVENTORY_JSON = Path(os.getenv('INVENTORY_JSON', str(ORGANIZED_DIR / 'inventory
 INVENTORY_CSV = Path(os.getenv('INVENTORY_CSV', str(ORGANIZED_DIR / 'inventory.csv')))
 BACKUP_DIR = Path(os.getenv('BACKUP_DIR', str(ORGANIZED_DIR / 'backups')))
 
-def resequence_tote(inventory, tote_id):
-    """Resequence items within a tote to remove gaps (1, 2, 3, ...)"""
-    tote_items = [item for item in inventory if item.get('tote_id') == tote_id]
-    tote_items.sort(key=lambda x: x.get('item_sequence', 0))
-    for new_seq, item in enumerate(tote_items, start=1):
-        item['item_sequence'] = new_seq
-
 def regenerate_csv(inventory):
     """Regenerate CSV from inventory data"""
     with open(INVENTORY_CSV, 'w') as f:
@@ -106,9 +99,6 @@ def remove_item(tote_id, sequence):
     # Remove item
     inventory = [item for item in inventory
                  if not (item.get('tote_id') == tote_id and item.get('item_sequence') == sequence)]
-
-    # Resequence remaining items in this tote to close gaps
-    resequence_tote(inventory, tote_id)
 
     # Save updated inventory
     with open(INVENTORY_JSON, 'w') as f:
