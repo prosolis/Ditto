@@ -68,6 +68,113 @@ COMIC_CATEGORIES = {'Comic Books'}
 CARD_CATEGORIES = {'Trading Cards'}
 
 # ========================================
+# PLATFORM NORMALIZATION
+# ========================================
+
+# Maps verbose platform names to preferred PriceCharting short forms
+PLATFORM_NORMALIZE = {
+    # Nintendo
+    'Nintendo Entertainment System': 'NES',
+    'Nintendo Entertainment System (NES)': 'NES',
+    'Super Nintendo Entertainment System': 'SNES',
+    'Super Nintendo Entertainment System (SNES)': 'SNES',
+    'Super Nintendo': 'SNES',
+    'Nintendo 64': 'N64',
+    'Nintendo GameCube': 'GameCube',
+    'Nintendo Wii': 'Wii',
+    'Nintendo Wii U': 'Wii U',
+    'Nintendo Switch': 'Switch',
+    'Game Boy Advance': 'GBA',
+    'Game Boy Color': 'GBC',
+    'Nintendo Game Boy': 'Game Boy',
+    'Nintendo DS': 'DS',
+    'Nintendo 3DS': '3DS',
+    # PlayStation
+    'PlayStation': 'PS1',
+    'PlayStation 1': 'PS1',
+    'PlayStation 2': 'PS2',
+    'PlayStation 3': 'PS3',
+    'PlayStation 4': 'PS4',
+    'PlayStation 5': 'PS5',
+    'PlayStation Portable': 'PSP',
+    'PlayStation Portable (PSP)': 'PSP',
+    'PlayStation Vita': 'PS Vita',
+    # Xbox
+    'Microsoft Xbox': 'Xbox',
+    'Xbox Series X|S': 'Xbox Series X',
+    # Sega
+    'Sega Genesis': 'Genesis',
+    'Sega Saturn': 'Saturn',
+    'Sega Dreamcast': 'Dreamcast',
+    'Sega Master System': 'Master System',
+    'Sega 32X': '32X',
+    # Alternate abbreviations
+    'PSX': 'PS1',
+    'NDS': 'DS',
+}
+
+# All known platform strings for stripping from item names, sorted longest first
+_ALL_PLATFORM_NAMES = sorted(
+    set(list(PLATFORM_NORMALIZE.keys()) + list(PLATFORM_NORMALIZE.values()) + [
+        # Regional platform names
+        'Super Famicom', 'Famicom', 'Mega Drive', 'PC Engine',
+        # Common forms that might appear in item names
+        'TurboGrafx-16', 'Atari 2600', 'Atari 7800',
+        'Game Boy', 'GB', 'GBC', 'GBA',
+        'NES', 'SNES', 'N64',
+        'PS1', 'PS2', 'PS3', 'PS4', 'PS5', 'PSP', 'PS Vita',
+        'GameCube', 'Wii', 'Wii U', 'Switch',
+        'Xbox', 'Xbox 360', 'Xbox One', 'Xbox Series X',
+        'Genesis', 'Saturn', 'Dreamcast', 'Master System',
+        'Sega CD', '32X', 'DS', '3DS',
+    ]),
+    key=len, reverse=True
+)
+
+
+def normalize_platform(platform):
+    """Normalize platform name to preferred PriceCharting short form."""
+    if not platform:
+        return platform
+    return PLATFORM_NORMALIZE.get(platform, platform)
+
+
+def strip_platform_from_name(name, platform=None):
+    """Remove platform references from item name to avoid redundancy.
+
+    Strips parenthetical forms like '(NES)' anywhere, and bare platform
+    names from the end of the string. Only removes trailing matches to
+    avoid mangling game names like 'Wii Sports'.
+    """
+    if not name:
+        return name
+
+    # Build the list of strings to strip, including the specific platform
+    to_strip = list(_ALL_PLATFORM_NAMES)
+    if platform:
+        to_strip.extend([platform, PLATFORM_NORMALIZE.get(platform, platform)])
+        to_strip = sorted(set(to_strip), key=len, reverse=True)
+
+    # Remove parenthetical platform references anywhere: "(NES)", "(PSP)", etc.
+    for p in to_strip:
+        name = re.sub(r'\s*\(' + re.escape(p) + r'\)', '', name, flags=re.IGNORECASE)
+
+    # Repeatedly strip platform names from the end of the string
+    changed = True
+    while changed:
+        changed = False
+        for p in to_strip:
+            pattern = re.compile(r'\s+' + re.escape(p) + r'\s*$', re.IGNORECASE)
+            new_name = pattern.sub('', name)
+            if new_name != name:
+                name = new_name
+                changed = True
+                break
+
+    return name.strip()
+
+
+# ========================================
 # FORMAT FUNCTIONS
 # ========================================
 
@@ -84,16 +191,22 @@ def format_video_game(item):
     Condition is only appended for CIB or Sealed. Loose (Item Only) is
     implied by omission on PriceCharting.
 
+    Platform names embedded in the item name by the LLM are stripped and
+    replaced with the normalized short form from the platform field.
+
     Examples:
         Call of Duty Black Ops PS3
         Mario 2 NES Sealed
         Donkey Kong 3 NES CIB
     """
     ai = item['ai_analysis']
-    parts = [ai['item_name']]
+    platform = normalize_platform(ai.get('platform'))
+    name = strip_platform_from_name(ai['item_name'], ai.get('platform'))
 
-    if ai.get('platform'):
-        parts.append(ai['platform'])
+    parts = [name]
+
+    if platform:
+        parts.append(platform)
 
     condition = CONDITION_MAP.get(ai.get('pricing_basis', ''))
     if condition:
