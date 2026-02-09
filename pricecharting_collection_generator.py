@@ -71,7 +71,7 @@ CARD_CATEGORIES = {'Trading Cards'}
 # PLATFORM NORMALIZATION
 # ========================================
 
-# Maps verbose platform names to preferred PriceCharting short forms
+# Maps verbose platform names to preferred abbreviated forms
 PLATFORM_NORMALIZE = {
     # Nintendo
     'Nintendo Entertainment System': 'NES',
@@ -86,11 +86,13 @@ PLATFORM_NORMALIZE = {
     'Nintendo Switch': 'Switch',
     'Game Boy Advance': 'GBA',
     'Game Boy Color': 'GBC',
-    'Nintendo Game Boy': 'Game Boy',
-    'Nintendo DS': 'DS',
+    'Nintendo Game Boy': 'GB',
+    'Game Boy': 'GB',
+    'Nintendo DS': 'NDS',
     'Nintendo 3DS': '3DS',
     # PlayStation
     'PlayStation': 'PS1',
+    'Sony PlayStation': 'PS1',
     'PlayStation 1': 'PS1',
     'PlayStation 2': 'PS2',
     'PlayStation 3': 'PS3',
@@ -98,7 +100,9 @@ PLATFORM_NORMALIZE = {
     'PlayStation 5': 'PS5',
     'PlayStation Portable': 'PSP',
     'PlayStation Portable (PSP)': 'PSP',
-    'PlayStation Vita': 'PS Vita',
+    'Sony PlayStation Portable': 'PSP',
+    'PlayStation Vita': 'Vita',
+    'PS Vita': 'Vita',
     # Xbox
     'Microsoft Xbox': 'Xbox',
     'Xbox Series X|S': 'Xbox Series X',
@@ -106,37 +110,46 @@ PLATFORM_NORMALIZE = {
     'Sega Genesis': 'Genesis',
     'Sega Saturn': 'Saturn',
     'Sega Dreamcast': 'Dreamcast',
-    'Sega Master System': 'Master System',
+    'Sega Master System': 'SMS',
+    'Master System': 'SMS',
     'Sega 32X': '32X',
+    # Regional
+    'Super Famicom': 'SFC',
+    'Famicom': 'FC',
+    'PC Engine': 'PCE',
+    'Mega Drive': 'MD',
+    'TurboGrafx-16': 'TG-16',
     # Alternate abbreviations
     'PSX': 'PS1',
-    'NDS': 'DS',
+    'NDS': 'NDS',
+    'DS': 'NDS',
 }
 
-# Japanese platform names paired with their US equivalents.
+# Japanese platform abbreviations paired with their US equivalents.
 # PriceCharting lists these as separate categories.
 REGIONAL_PLATFORM_PAIRS = {
-    'Super Famicom': 'SNES',
-    'Famicom': 'NES',
-    'PC Engine': 'TurboGrafx-16',
-    'Mega Drive': 'Genesis',
+    'SFC': 'SNES',
+    'FC': 'NES',
+    'PCE': 'TG-16',
+    'MD': 'Genesis',
 }
 _US_TO_JP_PLATFORM = {v: k for k, v in REGIONAL_PLATFORM_PAIRS.items()}
 
 # All known platform strings for stripping from item names, sorted longest first
 _ALL_PLATFORM_NAMES = sorted(
     set(list(PLATFORM_NORMALIZE.keys()) + list(PLATFORM_NORMALIZE.values()) + [
-        # Regional platform names
+        # Verbose forms that LLM might embed in item names
         'Super Famicom', 'Famicom', 'Mega Drive', 'PC Engine',
-        # Common forms that might appear in item names
         'TurboGrafx-16', 'Atari 2600', 'Atari 7800',
         'Game Boy', 'GB', 'GBC', 'GBA',
-        'NES', 'SNES', 'N64',
-        'PS1', 'PS2', 'PS3', 'PS4', 'PS5', 'PSP', 'PS Vita',
+        'NES', 'SNES', 'N64', 'NDS',
+        'PS1', 'PS2', 'PS3', 'PS4', 'PS5', 'PSP', 'PS Vita', 'Vita',
         'GameCube', 'Wii', 'Wii U', 'Switch',
         'Xbox', 'Xbox 360', 'Xbox One', 'Xbox Series X',
-        'Genesis', 'Saturn', 'Dreamcast', 'Master System',
+        'Genesis', 'Saturn', 'Dreamcast', 'SMS', 'Master System',
         'Sega CD', '32X', 'DS', '3DS',
+        # Abbreviated regional forms
+        'SFC', 'FC', 'PCE', 'MD', 'TG-16',
     ]),
     key=len, reverse=True
 )
