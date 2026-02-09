@@ -9,11 +9,13 @@ Automatically regenerates CSV after removal.
 USAGE:
 ------
 python remove_item.py TOTE-ID SEQUENCE
+python remove_item.py --purge-failed
 
 EXAMPLES:
 ---------
 python remove_item.py TOTE-002 54      # Remove item #54 from TOTE-002
 python remove_item.py TOTE-001 12      # Remove item #12 from TOTE-001
+python remove_item.py --purge-failed   # Remove all failed scan entries
 
 NOTE:
 -----
@@ -119,15 +121,82 @@ def remove_item(tote_id, sequence):
 
     return True
 
+def purge_failed():
+    """Remove all failed scan entries from inventory"""
+
+    if not INVENTORY_JSON.exists():
+        print(f"Inventory not found: {INVENTORY_JSON}")
+        return False
+
+    # Load inventory
+    with open(INVENTORY_JSON, 'r') as f:
+        inventory = json.load(f)
+
+    # Find all failed entries
+    failed = [item for item in inventory if item.get('status') == 'failed']
+
+    if not failed:
+        print("No failed entries found.")
+        return True
+
+    # Show what we're removing
+    print(f"\nFound {len(failed)} failed entries:\n")
+    for item in failed:
+        tote = item.get('tote_id', 'Unknown')
+        seq = item.get('item_sequence', 0)
+        error = item.get('error', 'Unknown error')
+        print(f"  #{seq} in {tote} - {error}")
+
+    # Confirm
+    confirm = input(f"\nRemove all {len(failed)} failed entries? (y/n): ")
+    if confirm.lower() != 'y':
+        print("Cancelled.")
+        return False
+
+    # Create backup
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    backup_file = BACKUP_DIR / f"inventory_before_purge_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(backup_file, 'w') as f:
+        json.dump(inventory, f, indent=2)
+    print(f"\nBackup created: {backup_file}")
+
+    # Remove all failed entries
+    inventory = [item for item in inventory if item.get('status') != 'failed']
+
+    # Save updated inventory
+    with open(INVENTORY_JSON, 'w') as f:
+        json.dump(inventory, f, indent=2)
+
+    # Regenerate CSV
+    regenerate_csv(inventory)
+
+    # Summary
+    total_value = sum(item['ai_analysis']['estimated_value_usd']
+                     for item in inventory if item['status'] == 'success')
+
+    print(f"\nPurged {len(failed)} failed entries")
+    print(f"  Items remaining: {len(inventory)}")
+    print(f"  Total collection value: ${total_value:,.2f}")
+    print(f"  Updated: {INVENTORY_JSON}")
+    print(f"  Updated: {INVENTORY_CSV}")
+
+    return True
+
 if __name__ == "__main__":
+    if len(sys.argv) == 2 and sys.argv[1] == '--purge-failed':
+        success = purge_failed()
+        sys.exit(0 if success else 1)
+
     if len(sys.argv) != 3:
         print("INVENTORY ITEM REMOVAL TOOL")
         print("="*50)
         print("\nUsage:")
         print("  python remove_item.py TOTE-ID SEQUENCE")
+        print("  python remove_item.py --purge-failed")
         print("\nExamples:")
         print("  python remove_item.py TOTE-002 54")
         print("  python remove_item.py TOTE-001 12")
+        print("  python remove_item.py --purge-failed")
         print("\nNote: Creates backup before removal")
         sys.exit(1)
 
