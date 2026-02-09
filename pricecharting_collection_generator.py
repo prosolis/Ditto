@@ -113,6 +113,16 @@ PLATFORM_NORMALIZE = {
     'NDS': 'DS',
 }
 
+# Japanese platform names paired with their US equivalents.
+# PriceCharting lists these as separate categories.
+REGIONAL_PLATFORM_PAIRS = {
+    'Super Famicom': 'SNES',
+    'Famicom': 'NES',
+    'PC Engine': 'TurboGrafx-16',
+    'Mega Drive': 'Genesis',
+}
+_US_TO_JP_PLATFORM = {v: k for k, v in REGIONAL_PLATFORM_PAIRS.items()}
+
 # All known platform strings for stripping from item names, sorted longest first
 _ALL_PLATFORM_NAMES = sorted(
     set(list(PLATFORM_NORMALIZE.keys()) + list(PLATFORM_NORMALIZE.values()) + [
@@ -132,11 +142,54 @@ _ALL_PLATFORM_NAMES = sorted(
 )
 
 
-def normalize_platform(platform):
-    """Normalize platform name to preferred PriceCharting short form."""
+def normalize_platform(platform, region=None):
+    """Normalize platform name to preferred PriceCharting short form.
+
+    Handles compound platform strings like 'Super Famicom SNES' by
+    extracting individual platform names and using region to pick the
+    correct one (NTSC-J -> Japanese name, NTSC-U -> US name).
+    """
     if not platform:
         return platform
-    return PLATFORM_NORMALIZE.get(platform, platform)
+
+    # Direct lookup
+    if platform in PLATFORM_NORMALIZE:
+        result = PLATFORM_NORMALIZE[platform]
+        if region == 'NTSC-J' and result in _US_TO_JP_PLATFORM:
+            return _US_TO_JP_PLATFORM[result]
+        return result
+
+    # Compound platform string — extract recognized names (longest first)
+    found = []
+    remaining = platform
+    for name in _ALL_PLATFORM_NAMES:
+        if re.search(r'\b' + re.escape(name) + r'\b', remaining, re.IGNORECASE):
+            normalized = PLATFORM_NORMALIZE.get(name, name)
+            if normalized not in found:
+                found.append(normalized)
+            # Remove matched portion to prevent sub-matches (e.g. "Famicom" inside "Super Famicom")
+            remaining = re.sub(r'\b' + re.escape(name) + r'\b', '', remaining, flags=re.IGNORECASE).strip()
+
+    if not found:
+        return platform
+
+    if len(found) == 1:
+        result = found[0]
+        if region == 'NTSC-J' and result in _US_TO_JP_PLATFORM:
+            return _US_TO_JP_PLATFORM[result]
+        return result
+
+    # Multiple platforms found — pick based on region
+    if region == 'NTSC-J':
+        for f in found:
+            if f in REGIONAL_PLATFORM_PAIRS:
+                return f
+    elif region == 'NTSC-U':
+        for f in found:
+            if f not in REGIONAL_PLATFORM_PAIRS:
+                return f
+
+    return found[0]
 
 
 def strip_platform_from_name(name, platform=None):
@@ -200,7 +253,7 @@ def format_video_game(item):
         Donkey Kong 3 NES CIB
     """
     ai = item['ai_analysis']
-    platform = normalize_platform(ai.get('platform'))
+    platform = normalize_platform(ai.get('platform'), ai.get('region'))
     name = strip_platform_from_name(ai['item_name'], ai.get('platform'))
 
     parts = [name]
