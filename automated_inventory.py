@@ -430,7 +430,7 @@ def query_pricecharting(item_name, category=None, platform=None):
 # LLM VALIDATION
 # ========================================
 
-def validate_inventory_item(data):
+def validate_inventory_item(data, num_pricecharting_results=0):
     """Validate LLM JSON output matches expected schema"""
     
     required_fields = [
@@ -515,15 +515,22 @@ def validate_inventory_item(data):
         raise ValueError(f"grader must be string or null, got {type(data['grader'])}")
 
     # Validate pricecharting_match_used if present (with auto-fix for hallucinated values)
+    max_valid = num_pricecharting_results if num_pricecharting_results > 0 else PRICECHARTING_MAX_RESULTS
     if data.get('pricecharting_match_used') is not None:
         match_value = data['pricecharting_match_used']
-        
+
         if not isinstance(match_value, int):
             raise ValueError(f"pricecharting_match_used must be integer or null, got {type(match_value)}")
-        
+
+        # Auto-fix: no PriceCharting results were provided but LLM set a value
+        if num_pricecharting_results == 0:
+            print(f"    ⚠️  pricecharting_match_used={match_value} but no PriceCharting options were provided")
+            print(f"    ⚠️  Setting to null - LLM hallucinated option number")
+            data['pricecharting_match_used'] = None
+            data['pricecharting_match_confidence'] = 'NONE'
         # Auto-fix out-of-range values
-        if match_value < 1 or match_value > PRICECHARTING_MAX_RESULTS:
-            print(f"    ⚠️  Invalid pricecharting_match_used: {match_value} (must be 1-{PRICECHARTING_MAX_RESULTS})")
+        elif match_value < 1 or match_value > max_valid:
+            print(f"    ⚠️  Invalid pricecharting_match_used: {match_value} (must be 1-{max_valid})")
             print(f"    ⚠️  Setting to null - LLM hallucinated option number")
             data['pricecharting_match_used'] = None
             data['manual_review_recommended'] = True
@@ -557,7 +564,10 @@ def analyze_with_llm(search_results_text, pricecharting_results=None):
             if pc.get('upc'):
                 context += f"  UPC: {pc['upc']}\n"
             context += f"  URL: {pc['product_url']}\n\n"
-    
+    else:
+        context += "\n\n=== NO PRICECHARTING DATA AVAILABLE ===\n"
+        context += "PriceCharting was not queried for this item. Set pricecharting_match_used to null.\n"
+
     prompt = f"""{context}
 
 Analyze search results and return JSON:
@@ -580,7 +590,7 @@ Analyze search results and return JSON:
   "variant_notes": "Important variants, editions, regional differences",
   "personal_effect_eligible": true,
   "warnings": [],
-  "pricecharting_match_used": 1-{PRICECHARTING_MAX_RESULTS} or null,
+  "pricecharting_match_used": {f"1-{len(pricecharting_results)} or null" if pricecharting_results else "null"},
   "pricecharting_match_confidence": "HIGH/MEDIUM/LOW/NONE",
   "manual_review_recommended": false,
   "manual_review_reason": "",
@@ -645,6 +655,7 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 - Use CONSOLE_ONLY, COMPLETE_CONSOLE, HANDHELD_ONLY, COMPLETE_HANDHELD based on descriptions
 
 PRICECHARTING MATCHING:
+{"- " + str(len(pricecharting_results)) + " options are listed above. Select ONLY from those options (1-" + str(len(pricecharting_results)) + ") or null." if pricecharting_results else "- No PriceCharting data available. pricecharting_match_used MUST be null."}
 - Match BOTH item name AND region
 - Japanese cart → prefer Japanese listing
 - US cart → prefer NTSC-U listing
@@ -719,8 +730,9 @@ Return ONLY valid JSON."""
         parsed = json.loads(response_text)
         
         # Validate schema
+        num_pc = len(pricecharting_results) if pricecharting_results else 0
         try:
-            validate_inventory_item(parsed)
+            validate_inventory_item(parsed, num_pricecharting_results=num_pc)
         except ValueError as e:
             if VERBOSE_LOGGING:
                 print(f"    ⚠️  Validation error: {e}")
