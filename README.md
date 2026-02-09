@@ -364,6 +364,12 @@ python remove_item.py TOTE-002 54
 # Prompts for confirmation
 # Creates backup before removal
 # Regenerates CSV
+
+# Remove all failed scan entries at once
+python remove_item.py --purge-failed
+# Lists each failed entry with tote, sequence, and error
+# Prompts for confirmation before removing
+# Original images remain in SCAN_DIR for re-scanning
 ```
 
 ### Manage Security Seals
