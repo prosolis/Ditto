@@ -68,6 +68,179 @@ COMIC_CATEGORIES = {'Comic Books'}
 CARD_CATEGORIES = {'Trading Cards'}
 
 # ========================================
+# PLATFORM NORMALIZATION
+# ========================================
+
+# Maps verbose platform names to preferred abbreviated forms
+PLATFORM_NORMALIZE = {
+    # Nintendo
+    'Nintendo Entertainment System': 'NES',
+    'Nintendo Entertainment System (NES)': 'NES',
+    'Super Nintendo Entertainment System': 'SNES',
+    'Super Nintendo Entertainment System (SNES)': 'SNES',
+    'Super Nintendo': 'SNES',
+    'Nintendo 64': 'N64',
+    'Nintendo GameCube': 'GameCube',
+    'Nintendo Wii': 'Wii',
+    'Nintendo Wii U': 'Wii U',
+    'Nintendo Switch': 'Switch',
+    'Game Boy Advance': 'GBA',
+    'Game Boy Color': 'GBC',
+    'Nintendo Game Boy': 'GB',
+    'Game Boy': 'GB',
+    'Nintendo DS': 'NDS',
+    'Nintendo 3DS': '3DS',
+    # PlayStation
+    'PlayStation': 'PS1',
+    'Sony PlayStation': 'PS1',
+    'PlayStation 1': 'PS1',
+    'PlayStation 2': 'PS2',
+    'PlayStation 3': 'PS3',
+    'PlayStation 4': 'PS4',
+    'PlayStation 5': 'PS5',
+    'PlayStation Portable': 'PSP',
+    'PlayStation Portable (PSP)': 'PSP',
+    'Sony PlayStation Portable': 'PSP',
+    'PlayStation Vita': 'Vita',
+    'PS Vita': 'Vita',
+    # Xbox
+    'Microsoft Xbox': 'Xbox',
+    'Xbox Series X|S': 'Xbox Series X',
+    # Sega
+    'Sega Genesis': 'Genesis',
+    'Sega Saturn': 'Saturn',
+    'Sega Dreamcast': 'Dreamcast',
+    'Sega Master System': 'SMS',
+    'Master System': 'SMS',
+    'Sega 32X': '32X',
+    # Regional
+    'Super Famicom': 'SFC',
+    'Famicom': 'FC',
+    'PC Engine': 'PCE',
+    'Mega Drive': 'MD',
+    'TurboGrafx-16': 'TG-16',
+    # Alternate abbreviations
+    'PSX': 'PS1',
+    'NDS': 'NDS',
+    'DS': 'NDS',
+}
+
+# Japanese platform abbreviations paired with their US equivalents.
+# PriceCharting lists these as separate categories.
+REGIONAL_PLATFORM_PAIRS = {
+    'SFC': 'SNES',
+    'FC': 'NES',
+    'PCE': 'TG-16',
+    'MD': 'Genesis',
+}
+_US_TO_JP_PLATFORM = {v: k for k, v in REGIONAL_PLATFORM_PAIRS.items()}
+
+# All known platform strings for stripping from item names, sorted longest first
+_ALL_PLATFORM_NAMES = sorted(
+    set(list(PLATFORM_NORMALIZE.keys()) + list(PLATFORM_NORMALIZE.values()) + [
+        # Verbose forms that LLM might embed in item names
+        'Super Famicom', 'Famicom', 'Mega Drive', 'PC Engine',
+        'TurboGrafx-16', 'Atari 2600', 'Atari 7800',
+        'Game Boy', 'GB', 'GBC', 'GBA',
+        'NES', 'SNES', 'N64', 'NDS',
+        'PS1', 'PS2', 'PS3', 'PS4', 'PS5', 'PSP', 'PS Vita', 'Vita',
+        'GameCube', 'Wii', 'Wii U', 'Switch',
+        'Xbox', 'Xbox 360', 'Xbox One', 'Xbox Series X',
+        'Genesis', 'Saturn', 'Dreamcast', 'SMS', 'Master System',
+        'Sega CD', '32X', 'DS', '3DS',
+        # Abbreviated regional forms
+        'SFC', 'FC', 'PCE', 'MD', 'TG-16',
+    ]),
+    key=len, reverse=True
+)
+
+
+def normalize_platform(platform, region=None):
+    """Normalize platform name to preferred PriceCharting short form.
+
+    Handles compound platform strings like 'Super Famicom SNES' by
+    extracting individual platform names and using region to pick the
+    correct one (NTSC-J -> Japanese name, NTSC-U -> US name).
+    """
+    if not platform:
+        return platform
+
+    # Direct lookup
+    if platform in PLATFORM_NORMALIZE:
+        result = PLATFORM_NORMALIZE[platform]
+        if region == 'NTSC-J' and result in _US_TO_JP_PLATFORM:
+            return _US_TO_JP_PLATFORM[result]
+        return result
+
+    # Compound platform string — extract recognized names (longest first)
+    found = []
+    remaining = platform
+    for name in _ALL_PLATFORM_NAMES:
+        if re.search(r'\b' + re.escape(name) + r'\b', remaining, re.IGNORECASE):
+            normalized = PLATFORM_NORMALIZE.get(name, name)
+            if normalized not in found:
+                found.append(normalized)
+            # Remove matched portion to prevent sub-matches (e.g. "Famicom" inside "Super Famicom")
+            remaining = re.sub(r'\b' + re.escape(name) + r'\b', '', remaining, flags=re.IGNORECASE).strip()
+
+    if not found:
+        return platform
+
+    if len(found) == 1:
+        result = found[0]
+        if region == 'NTSC-J' and result in _US_TO_JP_PLATFORM:
+            return _US_TO_JP_PLATFORM[result]
+        return result
+
+    # Multiple platforms found — pick based on region
+    if region == 'NTSC-J':
+        for f in found:
+            if f in REGIONAL_PLATFORM_PAIRS:
+                return f
+    elif region == 'NTSC-U':
+        for f in found:
+            if f not in REGIONAL_PLATFORM_PAIRS:
+                return f
+
+    return found[0]
+
+
+def strip_platform_from_name(name, platform=None):
+    """Remove platform references from item name to avoid redundancy.
+
+    Strips parenthetical forms like '(NES)' anywhere, and bare platform
+    names from the end of the string. Only removes trailing matches to
+    avoid mangling game names like 'Wii Sports'.
+    """
+    if not name:
+        return name
+
+    # Build the list of strings to strip, including the specific platform
+    to_strip = list(_ALL_PLATFORM_NAMES)
+    if platform:
+        to_strip.extend([platform, PLATFORM_NORMALIZE.get(platform, platform)])
+        to_strip = sorted(set(to_strip), key=len, reverse=True)
+
+    # Remove parenthetical platform references anywhere: "(NES)", "(PSP)", etc.
+    for p in to_strip:
+        name = re.sub(r'\s*\(' + re.escape(p) + r'\)', '', name, flags=re.IGNORECASE)
+
+    # Repeatedly strip platform names from the end of the string
+    changed = True
+    while changed:
+        changed = False
+        for p in to_strip:
+            pattern = re.compile(r'\s+' + re.escape(p) + r'\s*$', re.IGNORECASE)
+            new_name = pattern.sub('', name)
+            if new_name != name:
+                name = new_name
+                changed = True
+                break
+
+    return name.strip()
+
+
+# ========================================
 # FORMAT FUNCTIONS
 # ========================================
 
@@ -84,16 +257,22 @@ def format_video_game(item):
     Condition is only appended for CIB or Sealed. Loose (Item Only) is
     implied by omission on PriceCharting.
 
+    Platform names embedded in the item name by the LLM are stripped and
+    replaced with the normalized short form from the platform field.
+
     Examples:
         Call of Duty Black Ops PS3
         Mario 2 NES Sealed
         Donkey Kong 3 NES CIB
     """
     ai = item['ai_analysis']
-    parts = [ai['item_name']]
+    platform = normalize_platform(ai.get('platform'), ai.get('region'))
+    name = strip_platform_from_name(ai['item_name'], ai.get('platform'))
 
-    if ai.get('platform'):
-        parts.append(ai['platform'])
+    parts = [name]
+
+    if platform:
+        parts.append(platform)
 
     condition = CONDITION_MAP.get(ai.get('pricing_basis', ''))
     if condition:
