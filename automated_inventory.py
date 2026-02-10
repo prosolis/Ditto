@@ -762,66 +762,85 @@ Return ONLY valid JSON."""
 # ITEM PROCESSING
 # ========================================
 
-def process_item(image_path, tote_info, item_sequence):
-    """Process single item scan"""
+def process_item(image_path, tote_info, item_sequence, max_retries=2):
+    """Process single item scan with retry on transient errors"""
     print(f"\n  📦 Item #{item_sequence} in {tote_info['tote_id']}")
-    
-    try:
-        # Google Lens
-        print(f"    🔍 Google Lens...")
-        search_results = reverse_image_search(image_path)
-        formatted_results = format_search_results(search_results)
-        
-        # PriceCharting check
-        should_check, potential_name, category, platform = should_check_pricecharting(search_results)
-        pricecharting_results = None
-        if should_check:
-            print(f"    💰 PriceCharting ({category})...")
-            pricecharting_results = query_pricecharting(potential_name, category, platform)
-        
-        # LLM analysis
-        print(f"    🤖 Analyzing...")
-        analysis = analyze_with_llm(formatted_results, pricecharting_results)
-        
-        # Auto-crop before organizing
-        autocrop_image(image_path)
-        
-        # Organize file
-        tote_dir = ORGANIZED_DIR / tote_info['tote_id_safe']
-        tote_dir.mkdir(parents=True, exist_ok=True)
-        
-        item_name_safe = sanitize_filename(analysis['item_name'])
-        new_filename = f"{item_name_safe}_{item_sequence:03d}_{tote_info['tote_id_safe']}{image_path.suffix}"
-        new_path = tote_dir / new_filename
-        
-        shutil.move(image_path, new_path)
-        
-        print(f"    ✓ {analysis['item_name']} (${analysis['estimated_value_usd']:.2f})")
-        if analysis.get('manual_review_recommended'):
-            print(f"    ⚠️  MANUAL REVIEW: {analysis.get('manual_review_reason')}")
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "tote_id": tote_info['tote_id'],
-            "item_sequence": item_sequence,
-            "item_name": analysis['item_name'],
-            "image_file": new_filename,
-            "image_path": str(new_path),
-            "ai_analysis": analysis,
-            "pricecharting_data": pricecharting_results,
-            "status": "success"
-        }
-        
-    except Exception as e:
-        print(f"    ❌ ERROR: {e}")
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "tote_id": tote_info.get('tote_id', 'Unknown'),
-            "item_sequence": item_sequence,
-            "original_file": str(image_path),
-            "error": str(e),
-            "status": "failed"
-        }
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Google Lens
+            print(f"    🔍 Google Lens...")
+            search_results = reverse_image_search(image_path)
+            formatted_results = format_search_results(search_results)
+
+            # PriceCharting check
+            should_check, potential_name, category, platform = should_check_pricecharting(search_results)
+            pricecharting_results = None
+            if should_check:
+                print(f"    💰 PriceCharting ({category})...")
+                pricecharting_results = query_pricecharting(potential_name, category, platform)
+
+            # LLM analysis
+            print(f"    🤖 Analyzing...")
+            analysis = analyze_with_llm(formatted_results, pricecharting_results)
+
+            # Auto-crop before organizing
+            autocrop_image(image_path)
+
+            # Organize file
+            tote_dir = ORGANIZED_DIR / tote_info['tote_id_safe']
+            tote_dir.mkdir(parents=True, exist_ok=True)
+
+            item_name_safe = sanitize_filename(analysis['item_name'])
+            new_filename = f"{item_name_safe}_{item_sequence:03d}_{tote_info['tote_id_safe']}{image_path.suffix}"
+            new_path = tote_dir / new_filename
+
+            shutil.move(image_path, new_path)
+
+            print(f"    ✓ {analysis['item_name']} (${analysis['estimated_value_usd']:.2f})")
+            if analysis.get('manual_review_recommended'):
+                print(f"    ⚠️  MANUAL REVIEW: {analysis.get('manual_review_reason')}")
+
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "tote_id": tote_info['tote_id'],
+                "item_sequence": item_sequence,
+                "item_name": analysis['item_name'],
+                "image_file": new_filename,
+                "image_path": str(new_path),
+                "ai_analysis": analysis,
+                "pricecharting_data": pricecharting_results,
+                "status": "success"
+            }
+
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError) as e:
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                print(f"    ⚠️  Network error: {e}")
+                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                print(f"    ❌ ERROR after {max_retries} attempts: {e}")
+                return {
+                    "timestamp": datetime.now().isoformat(),
+                    "tote_id": tote_info.get('tote_id', 'Unknown'),
+                    "item_sequence": item_sequence,
+                    "original_file": str(image_path),
+                    "error": str(e),
+                    "status": "failed"
+                }
+
+        except Exception as e:
+            print(f"    ❌ ERROR: {e}")
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "tote_id": tote_info.get('tote_id', 'Unknown'),
+                "item_sequence": item_sequence,
+                "original_file": str(image_path),
+                "error": str(e),
+                "status": "failed"
+            }
 
 # ========================================
 # FILE WATCHER
