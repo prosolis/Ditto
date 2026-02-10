@@ -653,16 +653,13 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 **8-BIT/16-BIT CARTRIDGES (default: LOOSE_CART):**
 - NES, SNES, Genesis, Master System, Game Boy/GBC/GBA, TurboGrafx-16, Atari
 - Neo Geo AES/MVS, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear
-- Override only if search explicitly states "complete", "CIB", "sealed"
 
 **DISC-BASED (default: COMPLETE_IN_BOX):**
 - PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games
 - 3DO, CDi, PC Engine CD
-- Override only if search says "disc only" or "no case"
 
 **MODERN CARTRIDGES (default: COMPLETE_IN_BOX):**
 - DS, 3DS, Switch, PS Vita
-- Override only if search explicitly indicates otherwise
 
 **SEALED (NEW_SEALED):**
 - Only if search consistently shows "factory sealed", "NIB", "unopened"
