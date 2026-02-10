@@ -130,36 +130,55 @@ def local_path_to_url(image_path):
     return f"{NGROK_URL}/{url_path}"
 
 def check_for_tote_qr(image_path):
-    """Check if scan is a tote ID QR code"""
+    """Check if scan is a tote ID QR code.
+
+    Accepts any QR payload containing a TOTE-XXX identifier:
+      - Plain text: "TOTE-001"
+      - JSON with tote_id field: {"tote_id": "TOTE-001", ...}
+      - Text containing a tote ID: "Inventory TOTE-001 label"
+    """
     try:
         decoded = decode(Image.open(image_path))
-        
+
         if not decoded:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] No QR code detected in {image_path.name}")
             return {"is_tote_qr": False}
-        
+
         qr_data = decoded[0].data.decode()
-        data = json.loads(qr_data)
-        
-        # Validate structure
-        if data.get('type') != 'PORTUGAL_MOVE_2026_TOTE':
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Raw data: {qr_data}")
+
+        tote_id = None
+
+        # Try JSON first (may contain a tote_id field)
+        try:
+            data = json.loads(qr_data)
+            if isinstance(data, dict) and 'tote_id' in data:
+                tote_id = data['tote_id']
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fall back to regex search for TOTE-XXX anywhere in the payload
+        if not tote_id:
+            match = re.search(r'(TOTE-\d+)', qr_data)
+            if match:
+                tote_id = match.group(1)
+
+        if not tote_id:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] No TOTE-XXX pattern found in: {qr_data}")
             return {"is_tote_qr": False}
-        
-        if 'tote_id' not in data:
-            return {"is_tote_qr": False}
-        
-        tote_id = data['tote_id']
-        
-        # Validate format
-        if not re.match(r'^TOTE-\d{3}$', tote_id):
-            return {"is_tote_qr": False}
-        
+
         return {
             "is_tote_qr": True,
             "tote_id": tote_id,
             "tote_id_safe": sanitize_filename(tote_id)
         }
-        
+
     except Exception as e:
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Error: {e}")
         return {"is_tote_qr": False}
 
 # ========================================
