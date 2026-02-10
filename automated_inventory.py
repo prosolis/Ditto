@@ -129,6 +129,35 @@ def local_path_to_url(image_path):
     url_path = str(relative_path).replace('\\', '/')
     return f"{NGROK_URL}/{url_path}"
 
+def _decode_qr(image):
+    """Try to decode QR from image, retrying with preprocessing if needed."""
+    # Try original image first
+    results = decode(image)
+    if results:
+        return results
+
+    # Retry with grayscale conversion
+    gray = image.convert('L')
+    results = decode(gray)
+    if results:
+        return results
+
+    # Retry with higher contrast (threshold to black/white)
+    bw = gray.point(lambda x: 255 if x > 128 else 0, '1')
+    results = decode(bw)
+    if results:
+        return results
+
+    # Retry at half resolution (helps with very high-DPI scanner output)
+    width, height = image.size
+    if width > 2000 or height > 2000:
+        small = gray.resize((width // 2, height // 2), Image.LANCZOS)
+        results = decode(small)
+        if results:
+            return results
+
+    return []
+
 def check_for_tote_qr(image_path):
     """Check if scan is a tote ID QR code.
 
@@ -138,7 +167,8 @@ def check_for_tote_qr(image_path):
       - Text containing a tote ID: "Inventory TOTE-001 label"
     """
     try:
-        decoded = decode(Image.open(image_path))
+        image = Image.open(image_path)
+        decoded = _decode_qr(image)
 
         if not decoded:
             if VERBOSE_LOGGING:
