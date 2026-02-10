@@ -133,33 +133,50 @@ def check_for_tote_qr(image_path):
     """Check if scan is a tote ID QR code"""
     try:
         decoded = decode(Image.open(image_path))
-        
+
         if not decoded:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] No QR code detected in {image_path.name}")
             return {"is_tote_qr": False}
-        
+
         qr_data = decoded[0].data.decode()
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Raw data: {qr_data}")
+
         data = json.loads(qr_data)
-        
+
         # Validate structure
         if data.get('type') != 'PORTUGAL_MOVE_2026_TOTE':
+            if VERBOSE_LOGGING:
+                print(f"    [QR] Wrong type: {data.get('type')}")
             return {"is_tote_qr": False}
-        
+
         if 'tote_id' not in data:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] Missing tote_id field")
             return {"is_tote_qr": False}
-        
+
         tote_id = data['tote_id']
-        
-        # Validate format
-        if not re.match(r'^TOTE-\d{3}$', tote_id):
+
+        # Validate format (TOTE- followed by 1 or more digits)
+        if not re.match(r'^TOTE-\d+$', tote_id):
+            if VERBOSE_LOGGING:
+                print(f"    [QR] Invalid tote_id format: {tote_id}")
             return {"is_tote_qr": False}
-        
+
         return {
             "is_tote_qr": True,
             "tote_id": tote_id,
             "tote_id_safe": sanitize_filename(tote_id)
         }
-        
+
+    except json.JSONDecodeError as e:
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Not JSON: {e}")
+        return {"is_tote_qr": False}
     except Exception as e:
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Error: {e}")
         return {"is_tote_qr": False}
 
 # ========================================
