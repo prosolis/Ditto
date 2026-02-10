@@ -130,7 +130,13 @@ def local_path_to_url(image_path):
     return f"{NGROK_URL}/{url_path}"
 
 def check_for_tote_qr(image_path):
-    """Check if scan is a tote ID QR code"""
+    """Check if scan is a tote ID QR code.
+
+    Accepts any QR payload containing a TOTE-XXX identifier:
+      - Plain text: "TOTE-001"
+      - JSON with tote_id field: {"tote_id": "TOTE-001", ...}
+      - Text containing a tote ID: "Inventory TOTE-001 label"
+    """
     try:
         decoded = decode(Image.open(image_path))
 
@@ -143,25 +149,25 @@ def check_for_tote_qr(image_path):
         if VERBOSE_LOGGING:
             print(f"    [QR] Raw data: {qr_data}")
 
-        data = json.loads(qr_data)
+        tote_id = None
 
-        # Validate structure
-        if data.get('type') != 'PORTUGAL_MOVE_2026_TOTE':
+        # Try JSON first (may contain a tote_id field)
+        try:
+            data = json.loads(qr_data)
+            if isinstance(data, dict) and 'tote_id' in data:
+                tote_id = data['tote_id']
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fall back to regex search for TOTE-XXX anywhere in the payload
+        if not tote_id:
+            match = re.search(r'(TOTE-\d+)', qr_data)
+            if match:
+                tote_id = match.group(1)
+
+        if not tote_id:
             if VERBOSE_LOGGING:
-                print(f"    [QR] Wrong type: {data.get('type')}")
-            return {"is_tote_qr": False}
-
-        if 'tote_id' not in data:
-            if VERBOSE_LOGGING:
-                print(f"    [QR] Missing tote_id field")
-            return {"is_tote_qr": False}
-
-        tote_id = data['tote_id']
-
-        # Validate format (TOTE- followed by 1 or more digits)
-        if not re.match(r'^TOTE-\d+$', tote_id):
-            if VERBOSE_LOGGING:
-                print(f"    [QR] Invalid tote_id format: {tote_id}")
+                print(f"    [QR] No TOTE-XXX pattern found in: {qr_data}")
             return {"is_tote_qr": False}
 
         return {
@@ -170,10 +176,6 @@ def check_for_tote_qr(image_path):
             "tote_id_safe": sanitize_filename(tote_id)
         }
 
-    except json.JSONDecodeError as e:
-        if VERBOSE_LOGGING:
-            print(f"    [QR] Not JSON: {e}")
-        return {"is_tote_qr": False}
     except Exception as e:
         if VERBOSE_LOGGING:
             print(f"    [QR] Error: {e}")
