@@ -100,6 +100,7 @@ AUTOCROP_ENABLED = os.getenv('AUTOCROP_ENABLED', 'true').lower() == 'true'
 AUTOCROP_FUZZ = int(os.getenv('AUTOCROP_FUZZ', '10'))
 PRICECHARTING_MAX_RESULTS = int(os.getenv('PRICECHARTING_MAX_RESULTS', '5'))
 VERBOSE_LOGGING = os.getenv('VERBOSE_LOGGING', 'false').lower() == 'true'
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '2'))
 
 # Validate required settings
 if not SERPAPI_KEY:
@@ -762,11 +763,11 @@ Return ONLY valid JSON."""
 # ITEM PROCESSING
 # ========================================
 
-def process_item(image_path, tote_info, item_sequence, max_retries=2):
+def process_item(image_path, tote_info, item_sequence):
     """Process single item scan with retry on transient errors"""
     print(f"\n  📦 Item #{item_sequence} in {tote_info['tote_id']}")
 
-    for attempt in range(1, max_retries + 1):
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
             # Google Lens
             print(f"    🔍 Google Lens...")
@@ -815,13 +816,13 @@ def process_item(image_path, tote_info, item_sequence, max_retries=2):
 
         except (requests.exceptions.Timeout,
                 requests.exceptions.ConnectionError) as e:
-            if attempt < max_retries:
+            if attempt < MAX_RETRIES:
                 wait = 2 ** attempt
                 print(f"    ⚠️  Network error: {e}")
-                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{max_retries})...")
+                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{MAX_RETRIES})...")
                 time.sleep(wait)
             else:
-                print(f"    ❌ ERROR after {max_retries} attempts: {e}")
+                print(f"    ❌ ERROR after {MAX_RETRIES} attempts: {e}")
                 return {
                     "timestamp": datetime.now().isoformat(),
                     "tote_id": tote_info.get('tote_id', 'Unknown'),

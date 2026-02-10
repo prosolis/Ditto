@@ -247,6 +247,8 @@ BACKUP_DIR=organized/backups               # Override if stored elsewhere
 AUTOCROP_ENABLED=true          # Auto-crop images
 AUTOCROP_FUZZ=10               # ImageMagick fuzz tolerance
 PRICECHARTING_MAX_RESULTS=5    # PriceCharting options per item
+MAX_RETRIES=2                  # Retry attempts on network errors (timeouts, drops)
+VERBOSE_LOGGING=false          # Show detailed QR detection and debug output
 ```
 
 **LLM:**
@@ -456,6 +458,10 @@ Update `.env` with your actual ngrok tunnel URL from `ngrok http 8000`.
 ### Images not cropping
 
 Check ImageMagick is installed: `convert --version`
+
+### Network timeouts / SerpAPI read timeouts
+
+The scanner automatically retries on network errors (timeouts, connection drops) with exponential backoff. Increase `MAX_RETRIES` in `.env` if you have an unreliable connection (default: 2).
 
 ### LLM timeouts
 
