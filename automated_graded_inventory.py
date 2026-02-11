@@ -112,7 +112,7 @@ OLLAMA_TIMEOUT = int(os.getenv('OLLAMA_TIMEOUT', '120'))
 # Vision Model Configuration (multimodal LLM - Pass 1)
 VISION_MODEL = os.getenv('VISION_MODEL', 'minicpm-v')
 VISION_TIMEOUT = int(os.getenv('VISION_TIMEOUT', '120'))
-DOWNSCALE_MAX_DIMENSION = int(os.getenv('DOWNSCALE_MAX_DIMENSION', '1024'))
+DOWNSCALE_DPI = int(os.getenv('DOWNSCALE_DPI', '72'))
 
 # Processing Settings
 AUTOCROP_ENABLED = os.getenv('AUTOCROP_ENABLED', 'true').lower() == 'true'
@@ -228,28 +228,37 @@ def autocrop_image(image_path):
         return False
 
 def downscale_image_to_base64(image_path):
-    """Downscale image and return as base64 string for vision LLM.
+    """Downscale image based on DPI and return as base64 string for vision LLM.
 
+    Reads the source DPI from image metadata and scales down to DOWNSCALE_DPI.
+    For example, a 300 DPI scan downscaled to 72 DPI becomes ~24% of original size.
     Creates a temporary in-memory downscaled version - no temp files on disk.
     Returns base64-encoded JPEG string.
     """
     img = Image.open(image_path)
-
-    # Calculate new dimensions preserving aspect ratio
     width, height = img.size
-    max_dim = DOWNSCALE_MAX_DIMENSION
 
-    if width > max_dim or height > max_dim:
-        if width > height:
-            new_width = max_dim
-            new_height = int(height * (max_dim / width))
-        else:
-            new_height = max_dim
-            new_width = int(width * (max_dim / height))
+    # Read source DPI from image metadata (default 300 if not embedded)
+    source_dpi = 300
+    dpi_info = img.info.get('dpi')
+    if dpi_info:
+        # dpi_info is typically a tuple (x_dpi, y_dpi); use the larger axis
+        try:
+            source_dpi = max(int(dpi_info[0]), int(dpi_info[1]))
+        except (TypeError, IndexError, ValueError):
+            pass
 
+    # Only downscale if source DPI exceeds target
+    if source_dpi > DOWNSCALE_DPI:
+        scale = DOWNSCALE_DPI / source_dpi
+        new_width = max(1, int(width * scale))
+        new_height = max(1, int(height * scale))
         img = img.resize((new_width, new_height), Image.LANCZOS)
         if VERBOSE_LOGGING:
-            print(f"    [Vision] Downscaled {width}x{height} → {new_width}x{new_height}")
+            print(f"    [Vision] Downscaled {width}x{height} @ {source_dpi}dpi → {new_width}x{new_height} @ {DOWNSCALE_DPI}dpi")
+    else:
+        if VERBOSE_LOGGING:
+            print(f"    [Vision] No downscale needed ({source_dpi}dpi <= {DOWNSCALE_DPI}dpi target)")
 
     # Convert to RGB if necessary (handles RGBA, palette, etc.)
     if img.mode != 'RGB':
@@ -1226,7 +1235,7 @@ def main():
     print(f"  Output: {ORGANIZED_DIR}")
     print(f"  Vision Model (Pass 1): {VISION_MODEL}")
     print(f"  Text Model (Pass 2): {LLM_MODEL}")
-    print(f"  Downscale Max: {DOWNSCALE_MAX_DIMENSION}px")
+    print(f"  Downscale DPI: {DOWNSCALE_DPI}")
     print(f"  PriceCharting: {'Enabled' if PRICECHARTING_API_KEY else 'Disabled'}")
     print(f"  Auto-crop: {'Enabled' if AUTOCROP_ENABLED else 'Disabled'}")
     if AUTOCROP_ENABLED:
