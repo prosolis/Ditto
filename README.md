@@ -36,7 +36,8 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 - 🏷️ **Zebra label generation** - QR-coded tote labels (ZPL format)
 - 🔐 **Security seal tracking** - Associate numbered seals to containers
 - 🗑️ **Item removal utility** - Clean deletion with automatic backup
-- 🔄 **PriceCharting updater** - Batch update pricing data periodically. Requires a subscription which is $50 a month (woof). 
+- 🔄 **PriceCharting updater** - Batch update pricing data periodically. Requires a subscription which is $50 a month (woof).
+- 📤 **PriceCharting collection export** - Generate bulk-upload text files for PriceCharting collections (video games, LEGO, comics, trading cards)
 
 ### Output Files
 
@@ -44,6 +45,7 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 - `inventory.csv` - Simplified spreadsheet summary
 - `/TOTE-XXX/` - Organized, cropped, renamed images by container
 - `seal_tracking.json` - Physical security seal associations
+- `/pricecharting/` - PriceCharting collection upload files (videogames.txt, legos.txt, comics.txt, cards.txt)
 
 ## Use Cases
 
@@ -87,6 +89,7 @@ LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
 4. `manage_seals.py` - Track security seals
 5. `update_pricecharting.py` - Batch pricing updates
 6. `remove_item.py` - Item removal with backup
+7. `pricecharting_collection_generator.py` - Generate PriceCharting collection upload files
 
 **Data Flow:**
 
@@ -353,6 +356,37 @@ python update_pricecharting.py --new-only
 python update_pricecharting.py --categories "Video Game Software" "LEGO"
 ```
 
+### Generate PriceCharting Collection Files
+
+Export inventory to text files for PriceCharting's bulk collection upload. One file per category with formatted search strings:
+
+```bash
+# Generate files for entire inventory
+python pricecharting_collection_generator.py
+
+# Generate files for a single tote (incremental upload)
+python pricecharting_collection_generator.py --tote TOTE-003
+
+# Custom inventory path
+python pricecharting_collection_generator.py --inventory /path/to/inventory.json
+
+# Custom output directory
+python pricecharting_collection_generator.py --output-dir /path/to/output
+```
+
+**Output files:**
+
+| File | Categories | Format Example |
+|---|---|---|
+| `videogames.txt` | Video Game Software, Console, Accessory, Handheld | `"Chrono Trigger SFC CIB"` |
+| `cards.txt` | Trading Cards | `"Charizard Pokemon Base Set #4"` |
+| `comics.txt` | Comic Books | `"Action Comics #13 1939 CGC 8"` |
+| `legos.txt` | LEGO | `"Fire Mario #71370 LEGO Super Mario"` |
+
+When using `--tote`, filenames include the tote ID (e.g., `videogames-tote-003.txt`) for incremental uploads without re-importing the entire collection.
+
+Platform names are automatically normalized to abbreviated forms (NES, SNES, SFC, PSP, etc.) and redundant platform references embedded in item names by the LLM are stripped. Japanese games (NTSC-J) use regional platform names (SFC, FC, MD, PCE).
+
 ### Remove Erroneous Entries
 
 ```bash
@@ -419,6 +453,7 @@ NES, SNES, N64, GameCube, Wii, Wii U, Switch, Game Boy, GBA, DS, 3DS, PlayStatio
 - Handheld Game Systems
 - LEGO Sets
 - Comic Books
+- Trading Cards
 - Electronics
 - Collectibles
 
@@ -477,10 +512,11 @@ The system generates inventory suitable for international customs:
 ├── batch_inventory.py         # Batch processing
 ├── generate_labels.py         # QR label generation
 ├── manage_seals.py           # Seal tracking
-├── update_pricecharting.py   # Price updates
-├── remove_item.py            # Item removal
-├── .env.example              # Config template
-└── README.md                 # Documentation
+├── update_pricecharting.py               # Price updates
+├── pricecharting_collection_generator.py # PriceCharting collection export
+├── remove_item.py                        # Item removal
+├── .env.example                          # Config template
+└── README.md                             # Documentation
 ```
 
 ### Contributing
