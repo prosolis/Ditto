@@ -428,8 +428,14 @@ def categorize_item(item):
 # MAIN LOGIC
 # ========================================
 
-def generate_collection_files(inventory_path, output_dir):
-    """Read inventory and generate PriceCharting collection files."""
+def generate_collection_files(inventory_path, output_dir, tote_filter=None):
+    """Read inventory and generate PriceCharting collection files.
+
+    Args:
+        inventory_path: Path to inventory.json
+        output_dir: Directory for output files
+        tote_filter: If set, only include items from this tote (e.g. 'TOTE-003')
+    """
 
     if not inventory_path.exists():
         print(f"Error: Inventory file not found: {inventory_path}")
@@ -450,6 +456,8 @@ def generate_collection_files(inventory_path, output_dir):
     skipped_other = 0
 
     for item in inventory:
+        if tote_filter and item.get('tote_id') != tote_filter:
+            continue
         cat = categorize_item(item)
         if cat:
             categorized[cat].append(item)
@@ -457,6 +465,9 @@ def generate_collection_files(inventory_path, output_dir):
             skipped_failed += 1
         else:
             skipped_other += 1
+
+    # Build filename suffix for tote-specific output
+    tote_suffix = f'-{tote_filter.lower()}' if tote_filter else ''
 
     # Generate output files
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -469,7 +480,7 @@ def generate_collection_files(inventory_path, output_dir):
             continue
 
         format_fn = FORMAT_FUNCTIONS[cat_key]
-        output_file = output_dir / f'{cat_key}.txt'
+        output_file = output_dir / f'{cat_key}{tote_suffix}.txt'
 
         lines = []
         for item in items:
@@ -492,6 +503,8 @@ def generate_collection_files(inventory_path, output_dir):
     print("PRICECHARTING COLLECTION FILES GENERATED")
     print(f"{'='*60}")
     print(f"Source: {inventory_path}")
+    if tote_filter:
+        print(f"Tote filter: {tote_filter}")
     print(f"Total items in inventory: {len(inventory)}")
     print()
 
@@ -532,6 +545,12 @@ def main():
         default=None,
         help='Output directory for collection files (default: <inventory_dir>/pricecharting)'
     )
+    parser.add_argument(
+        '--tote',
+        type=str,
+        default=None,
+        help='Only generate files for a specific tote (e.g. TOTE-003)'
+    )
 
     args = parser.parse_args()
 
@@ -541,7 +560,7 @@ def main():
     print("PRICECHARTING COLLECTION GENERATOR")
     print("=" * 60)
 
-    generate_collection_files(args.inventory, output_dir)
+    generate_collection_files(args.inventory, output_dir, tote_filter=args.tote)
 
 
 if __name__ == "__main__":
