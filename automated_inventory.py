@@ -668,8 +668,8 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 - Neo Geo AES/MVS, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear
 
 **DISC-BASED (default: COMPLETE_IN_BOX):**
-- PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games
-- 3DO, CDi, PC Engine CD
+- PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games, Xbox 360
+- 3DO, CDi, PC Engine CD, Wii U, Playstation 2, Playstation 3, Playstation 4
 
 **MODERN CARTRIDGES (default: COMPLETE_IN_BOX):**
 - DS, 3DS, Switch, PS Vita
