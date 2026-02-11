@@ -100,6 +100,7 @@ AUTOCROP_ENABLED = os.getenv('AUTOCROP_ENABLED', 'true').lower() == 'true'
 AUTOCROP_FUZZ = int(os.getenv('AUTOCROP_FUZZ', '10'))
 PRICECHARTING_MAX_RESULTS = int(os.getenv('PRICECHARTING_MAX_RESULTS', '5'))
 VERBOSE_LOGGING = os.getenv('VERBOSE_LOGGING', 'false').lower() == 'true'
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '2'))
 
 # Validate required settings
 if not SERPAPI_KEY:
@@ -130,36 +131,55 @@ def local_path_to_url(image_path):
     return f"{NGROK_URL}/{url_path}"
 
 def check_for_tote_qr(image_path):
-    """Check if scan is a tote ID QR code"""
+    """Check if scan is a tote ID QR code.
+
+    Accepts any QR payload containing a TOTE-XXX identifier:
+      - Plain text: "TOTE-001"
+      - JSON with tote_id field: {"tote_id": "TOTE-001", ...}
+      - Text containing a tote ID: "Inventory TOTE-001 label"
+    """
     try:
         decoded = decode(Image.open(image_path))
-        
+
         if not decoded:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] No QR code detected in {image_path.name}")
             return {"is_tote_qr": False}
-        
+
         qr_data = decoded[0].data.decode()
-        data = json.loads(qr_data)
-        
-        # Validate structure
-        if data.get('type') != 'PORTUGAL_MOVE_2026_TOTE':
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Raw data: {qr_data}")
+
+        tote_id = None
+
+        # Try JSON first (may contain a tote_id field)
+        try:
+            data = json.loads(qr_data)
+            if isinstance(data, dict) and 'tote_id' in data:
+                tote_id = data['tote_id']
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fall back to regex search for TOTE-XXX anywhere in the payload
+        if not tote_id:
+            match = re.search(r'(TOTE-\d+)', qr_data)
+            if match:
+                tote_id = match.group(1)
+
+        if not tote_id:
+            if VERBOSE_LOGGING:
+                print(f"    [QR] No TOTE-XXX pattern found in: {qr_data}")
             return {"is_tote_qr": False}
-        
-        if 'tote_id' not in data:
-            return {"is_tote_qr": False}
-        
-        tote_id = data['tote_id']
-        
-        # Validate format
-        if not re.match(r'^TOTE-\d{3}$', tote_id):
-            return {"is_tote_qr": False}
-        
+
         return {
             "is_tote_qr": True,
             "tote_id": tote_id,
             "tote_id_safe": sanitize_filename(tote_id)
         }
-        
+
     except Exception as e:
+        if VERBOSE_LOGGING:
+            print(f"    [QR] Error: {e}")
         return {"is_tote_qr": False}
 
 # ========================================
@@ -248,8 +268,17 @@ def should_check_pricecharting(google_results):
     first_match = visual_matches[0].get('title', '').lower()
     
     # Video game indicators
-    game_platforms = ["xbox", "playstation", "nintendo", "ps1", "ps2", "ps3", "ps4", "ps5", 
-                     "wii", "switch", "nes", "snes", "n64", "gamecube", "genesis", "sega"]
+    game_platforms = ["xbox", "xbox 360", "xbox one", "xbox series",
+                     "playstation", "ps1", "ps2", "ps3", "ps4", "ps5", "psp", "ps vita", "vita",
+                     "wii", "wii u", "switch", "nes", "famicom", "snes", "super famicom",
+                     "n64", "gamecube", "game boy", "gameboy", "gba", "game boy advance",
+                     "game boy color", "gbc", "ds", "3ds", "virtual boy",
+                     "genesis", "mega drive", "master system", "game gear",
+                     "saturn", "dreamcast", "sega cd", "sega 32x",
+                     "neo geo", "neo-geo", "neogeo", "aes", "mvs",
+                     "neo geo pocket", "wonderswan",
+                     "turbografx", "pc engine", "pc-engine",
+                     "3do", "cdi", "cd-i", "atari"]
     game_keywords = ["game", "video game", "cartridge"]
     
     is_game = any(platform in first_match for platform in game_platforms) or \
@@ -280,8 +309,19 @@ def should_check_pricecharting(google_results):
     if is_game:
         category = "Video Game Software"
         # Try to detect platform
-        for plat in ["Xbox 360", "Xbox One", "Xbox Series X", "PS5", "PS4", "PS3", "PS2", "PS1",
-                     "Switch", "Wii U", "Wii", "GameCube", "N64", "SNES", "NES", "Genesis"]:
+        for plat in ["Xbox Series X", "Xbox One", "Xbox 360", "Xbox",
+                     "PS5", "PS4", "PS3", "PS2", "PS1", "PSP", "PS Vita",
+                     "Switch", "Wii U", "Wii", "GameCube", "N64", "SNES", "NES",
+                     "Virtual Boy",
+                     "Game Boy Advance", "Game Boy Color", "Game Boy",
+                     "Nintendo 3DS", "Nintendo DS",
+                     "Genesis", "Sega Master System", "Game Gear",
+                     "Sega Saturn", "Sega Dreamcast", "Sega CD", "Sega 32X",
+                     "Neo Geo AES", "Neo Geo MVS", "Neo Geo Pocket Color", "Neo Geo Pocket",
+                     "WonderSwan Color", "WonderSwan",
+                     "TurboGrafx-16", "PC Engine",
+                     "3DO", "CDi",
+                     "Atari 2600", "Atari 7800", "Atari Jaguar", "Atari Lynx"]:
             if plat.lower() in first_match:
                 platform = plat
                 break
@@ -305,26 +345,48 @@ def query_pricecharting(item_name, category=None, platform=None):
         
         if category == "Video Game Software" and platform:
             platform_map = {
-                "NES": "nes", "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                # Nintendo - Home Consoles
+                "NES": "nes", "Famicom": "famicom",
+                "SNES": "super-nintendo", "Super Nintendo": "super-nintendo",
+                "Super Famicom": "super-famicom",
                 "Nintendo 64": "nintendo-64", "N64": "nintendo-64",
                 "GameCube": "gamecube", "Wii": "wii", "Wii U": "wii-u",
                 "Switch": "nintendo-switch",
+                # Nintendo - Handhelds
                 "Game Boy": "gameboy", "Game Boy Color": "gameboy-color",
                 "Game Boy Advance": "gameboy-advance",
                 "Nintendo DS": "nintendo-ds", "Nintendo 3DS": "nintendo-3ds",
+                "Virtual Boy": "virtual-boy",
+                # PlayStation
                 "PlayStation": "playstation", "PS1": "playstation",
                 "PlayStation 2": "playstation-2", "PS2": "playstation-2",
                 "PlayStation 3": "playstation-3", "PS3": "playstation-3",
                 "PlayStation 4": "playstation-4", "PS4": "playstation-4",
                 "PlayStation 5": "playstation-5", "PS5": "playstation-5",
                 "PSP": "psp", "PS Vita": "playstation-vita",
+                # Xbox
                 "Xbox": "xbox", "Xbox 360": "xbox-360",
                 "Xbox One": "xbox-one", "Xbox Series X": "xbox-series-x",
+                # Sega
                 "Sega Genesis": "sega-genesis", "Genesis": "sega-genesis",
+                "Mega Drive": "sega-mega-drive",
+                "Sega Master System": "sega-master-system",
+                "Game Gear": "game-gear",
                 "Sega Saturn": "sega-saturn", "Saturn": "sega-saturn",
                 "Sega Dreamcast": "sega-dreamcast", "Dreamcast": "sega-dreamcast",
-                "Sega Master System": "sega-master-system",
-                "Sega CD": "sega-cd", "Sega 32X": "sega-32x"
+                "Sega CD": "sega-cd", "Sega 32X": "sega-32x",
+                # SNK / Neo Geo
+                "Neo Geo AES": "neo-geo", "Neo Geo MVS": "neo-geo",
+                "Neo Geo Pocket": "neo-geo-pocket",
+                "Neo Geo Pocket Color": "neo-geo-pocket-color",
+                # NEC
+                "TurboGrafx-16": "turbografx-16", "PC Engine": "pc-engine",
+                # Bandai
+                "WonderSwan": "wonderswan", "WonderSwan Color": "wonderswan-color",
+                # Other
+                "3DO": "3do", "CDi": "cd-i",
+                "Atari 2600": "atari-2600", "Atari 7800": "atari-7800",
+                "Atari Jaguar": "atari-jaguar", "Atari Lynx": "atari-lynx",
             }
             pc_platform = platform_map.get(platform, platform.lower().replace(" ", "-"))
             search_query = f"{item_name} {pc_platform}"
@@ -388,7 +450,7 @@ def query_pricecharting(item_name, category=None, platform=None):
 # LLM VALIDATION
 # ========================================
 
-def validate_inventory_item(data):
+def validate_inventory_item(data, num_pricecharting_results=0):
     """Validate LLM JSON output matches expected schema"""
     
     required_fields = [
@@ -403,17 +465,29 @@ def validate_inventory_item(data):
     
     # Validate confidence
     if data['confidence'] not in ['HIGH', 'MEDIUM', 'LOW']:
-        raise ValueError(f"Invalid confidence: '{data['confidence']}' (must be HIGH/MEDIUM/LOW)")
-    
+        if data['confidence'] is None:
+            data['confidence'] = 'LOW'
+            print(f"    ⚠️  LLM returned null confidence, defaulting to LOW")
+        else:
+            raise ValueError(f"Invalid confidence: '{data['confidence']}' (must be HIGH/MEDIUM/LOW)")
+
     # Validate pricing_basis (with auto-fix for LLM indecision)
     valid_pricing = [
         'COMPLETE_IN_BOX', 'LOOSE_CART', 'LOOSE_DISC', 'NEW_SEALED',
         'LOOSE_ACCESSORY', 'CONSOLE_ONLY', 'COMPLETE_CONSOLE',
         'HANDHELD_ONLY', 'COMPLETE_HANDHELD', 'USED'
     ]
-    
+
     pricing_basis = data['pricing_basis']
-    
+
+    if pricing_basis is None:
+        data['pricing_basis'] = 'USED'
+        data['manual_review_recommended'] = True
+        if not data.get('manual_review_reason'):
+            data['manual_review_reason'] = "LLM could not determine condition - please verify"
+        print(f"    ⚠️  LLM returned null pricing_basis, defaulting to USED and flagging for review")
+        pricing_basis = data['pricing_basis']
+
     # Handle LLM indecision (e.g., "COMPLETE_IN_BOX/LOOSE_CART")
     if '/' in pricing_basis:
         print(f"    ⚠️  LLM uncertain about condition: '{pricing_basis}'")
@@ -452,8 +526,8 @@ def validate_inventory_item(data):
         raise ValueError("warnings must be array")
     
     # Validate item_name is not empty
-    if not data['item_name'] or data['item_name'].strip() == '':
-        raise ValueError("item_name cannot be empty")
+    if not data['item_name'] or not isinstance(data['item_name'], str) or data['item_name'].strip() == '':
+        raise ValueError("item_name cannot be empty or null")
     
     # Validate new optional fields (grade, issue_number, grader, year)
     if data.get('issue_number') is not None and not isinstance(data['issue_number'], str):
@@ -473,15 +547,22 @@ def validate_inventory_item(data):
         raise ValueError(f"grader must be string or null, got {type(data['grader'])}")
 
     # Validate pricecharting_match_used if present (with auto-fix for hallucinated values)
+    max_valid = num_pricecharting_results if num_pricecharting_results > 0 else PRICECHARTING_MAX_RESULTS
     if data.get('pricecharting_match_used') is not None:
         match_value = data['pricecharting_match_used']
-        
+
         if not isinstance(match_value, int):
             raise ValueError(f"pricecharting_match_used must be integer or null, got {type(match_value)}")
-        
+
+        # Auto-fix: no PriceCharting results were provided but LLM set a value
+        if num_pricecharting_results == 0:
+            print(f"    ⚠️  pricecharting_match_used={match_value} but no PriceCharting options were provided")
+            print(f"    ⚠️  Setting to null - LLM hallucinated option number")
+            data['pricecharting_match_used'] = None
+            data['pricecharting_match_confidence'] = 'NONE'
         # Auto-fix out-of-range values
-        if match_value < 1 or match_value > PRICECHARTING_MAX_RESULTS:
-            print(f"    ⚠️  Invalid pricecharting_match_used: {match_value} (must be 1-{PRICECHARTING_MAX_RESULTS})")
+        elif match_value < 1 or match_value > max_valid:
+            print(f"    ⚠️  Invalid pricecharting_match_used: {match_value} (must be 1-{max_valid})")
             print(f"    ⚠️  Setting to null - LLM hallucinated option number")
             data['pricecharting_match_used'] = None
             data['manual_review_recommended'] = True
@@ -515,7 +596,10 @@ def analyze_with_llm(search_results_text, pricecharting_results=None):
             if pc.get('upc'):
                 context += f"  UPC: {pc['upc']}\n"
             context += f"  URL: {pc['product_url']}\n\n"
-    
+    else:
+        context += "\n\n=== NO PRICECHARTING DATA AVAILABLE ===\n"
+        context += "PriceCharting was not queried for this item. Set pricecharting_match_used to null.\n"
+
     prompt = f"""{context}
 
 Analyze search results and return JSON:
@@ -532,12 +616,13 @@ Analyze search results and return JSON:
   "value_range_max": 0.00,
   "price_source": "Which sources used",
   "pricing_basis": "COMPLETE_IN_BOX/LOOSE_CART/LOOSE_DISC/NEW_SEALED/LOOSE_ACCESSORY/CONSOLE_ONLY/COMPLETE_CONSOLE/HANDHELD_ONLY/COMPLETE_HANDHELD/USED",
-  "category": "Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles, etc.",
+  "category": "Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Electronics, Collectibles, etc.",
+  "comic_grade": null,
   "condition_notes": "Brief notes",
   "variant_notes": "Important variants, editions, regional differences",
   "personal_effect_eligible": true,
   "warnings": [],
-  "pricecharting_match_used": 1-{PRICECHARTING_MAX_RESULTS} or null,
+  "pricecharting_match_used": {f"1-{len(pricecharting_results)} or null" if pricecharting_results else "null"},
   "pricecharting_match_confidence": "HIGH/MEDIUM/LOW/NONE",
   "manual_review_recommended": false,
   "manual_review_reason": "",
@@ -580,15 +665,14 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 
 **8-BIT/16-BIT CARTRIDGES (default: LOOSE_CART):**
 - NES, SNES, Genesis, Master System, Game Boy/GBC/GBA, TurboGrafx-16, Atari
-- Override only if search explicitly states "complete", "CIB", "sealed"
+- Neo Geo AES/MVS, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear
 
 **DISC-BASED (default: COMPLETE_IN_BOX):**
-- PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games
-- Override only if search says "disc only" or "no case"
+- PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games, Xbox 360
+- 3DO, CDi, PC Engine CD, Wii U, Playstation 2, Playstation 3, Playstation 4
 
 **MODERN CARTRIDGES (default: COMPLETE_IN_BOX):**
 - DS, 3DS, Switch, PS Vita
-- Override only if search explicitly indicates otherwise
 
 **SEALED (NEW_SEALED):**
 - Only if search consistently shows "factory sealed", "NIB", "unopened"
@@ -600,12 +684,19 @@ CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
 - Use CONSOLE_ONLY, COMPLETE_CONSOLE, HANDHELD_ONLY, COMPLETE_HANDHELD based on descriptions
 
 PRICECHARTING MATCHING:
+{"- " + str(len(pricecharting_results)) + " options are listed above. Select ONLY from those options (1-" + str(len(pricecharting_results)) + ") or null." if pricecharting_results else "- No PriceCharting data available. pricecharting_match_used MUST be null."}
 - Match BOTH item name AND region
 - Japanese cart → prefer Japanese listing
 - US cart → prefer NTSC-U listing
 - Set pricecharting_match_confidence: HIGH (clear match), MEDIUM (uncertain), LOW (questionable), NONE (no match)
 - Use appropriate price: LOOSE_CART→loose_price, COMPLETE_IN_BOX→cib_price, NEW_SEALED→new_price
 - If regional mismatch, set to null and warn
+
+COMIC BOOK GRADING:
+- comic_grade is a float on the 10-point scale (e.g., 8.0, 9.2, 9.8)
+- Set comic_grade only for Comic Books category, null for everything else
+- If grade is mentioned in search results, use that value
+- If no grade info available, set to null
 
 CATEGORIES:
 Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles
@@ -668,8 +759,9 @@ Return ONLY valid JSON."""
         parsed = json.loads(response_text)
         
         # Validate schema
+        num_pc = len(pricecharting_results) if pricecharting_results else 0
         try:
-            validate_inventory_item(parsed)
+            validate_inventory_item(parsed, num_pricecharting_results=num_pc)
         except ValueError as e:
             if VERBOSE_LOGGING:
                 print(f"    ⚠️  Validation error: {e}")
@@ -693,75 +785,84 @@ Return ONLY valid JSON."""
 # ========================================
 
 def process_item(image_path, tote_info, item_sequence):
-    """Process single item scan"""
+    """Process single item scan with retry on transient errors"""
     print(f"\n  📦 Item #{item_sequence} in {tote_info['tote_id']}")
-    
-    try:
-        # Google Lens
-        print(f"    🔍 Google Lens...")
-        search_results = reverse_image_search(image_path)
-        formatted_results = format_search_results(search_results)
-        
-        # PriceCharting check
-        should_check, potential_name, category, platform = should_check_pricecharting(search_results)
-        pricecharting_results = None
-        if should_check:
-            print(f"    💰 PriceCharting ({category})...")
-            pricecharting_results = query_pricecharting(potential_name, category, platform)
-        
-        # LLM analysis
-        print(f"    🤖 Analyzing...")
-        analysis = analyze_with_llm(formatted_results, pricecharting_results)
-        
-        # Auto-crop before organizing
-        autocrop_image(image_path)
-        
-        # Organize file
-        tote_dir = ORGANIZED_DIR / tote_info['tote_id_safe']
-        tote_dir.mkdir(parents=True, exist_ok=True)
-        
-        item_name_safe = sanitize_filename(analysis['item_name'])
-        base_filename = f"{item_name_safe}_{tote_info['tote_id_safe']}"
-        new_filename = f"{base_filename}{image_path.suffix}"
-        new_path = tote_dir / new_filename
-        
-        # Handle duplicate filenames by adding counter
-        if new_path.exists():
-            counter = 2
-            while new_path.exists():
-                new_filename = f"{base_filename}_{counter}{image_path.suffix}"
-                new_path = tote_dir / new_filename
-                counter += 1
-            print(f"    ⚠️  Duplicate item name - added counter: _{counter-1}")
-        
-        shutil.move(image_path, new_path)
-        
-        print(f"    ✓ {analysis['item_name']} (${analysis['estimated_value_usd']:.2f})")
-        if analysis.get('manual_review_recommended'):
-            print(f"    ⚠️  MANUAL REVIEW: {analysis.get('manual_review_reason')}")
-        
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "tote_id": tote_info['tote_id'],
-            "item_sequence": item_sequence,
-            "item_name": analysis['item_name'],
-            "image_file": new_filename,
-            "image_path": str(new_path),
-            "ai_analysis": analysis,
-            "pricecharting_data": pricecharting_results,
-            "status": "success"
-        }
-        
-    except Exception as e:
-        print(f"    ❌ ERROR: {e}")
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "tote_id": tote_info.get('tote_id', 'Unknown'),
-            "item_sequence": item_sequence,
-            "original_file": str(image_path),
-            "error": str(e),
-            "status": "failed"
-        }
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            # Google Lens
+            print(f"    🔍 Google Lens...")
+            search_results = reverse_image_search(image_path)
+            formatted_results = format_search_results(search_results)
+
+            # PriceCharting check
+            should_check, potential_name, category, platform = should_check_pricecharting(search_results)
+            pricecharting_results = None
+            if should_check:
+                print(f"    💰 PriceCharting ({category})...")
+                pricecharting_results = query_pricecharting(potential_name, category, platform)
+
+            # LLM analysis
+            print(f"    🤖 Analyzing...")
+            analysis = analyze_with_llm(formatted_results, pricecharting_results)
+
+            # Auto-crop before organizing
+            autocrop_image(image_path)
+
+            # Organize file
+            tote_dir = ORGANIZED_DIR / tote_info['tote_id_safe']
+            tote_dir.mkdir(parents=True, exist_ok=True)
+
+            item_name_safe = sanitize_filename(analysis['item_name'])
+            new_filename = f"{item_name_safe}_{item_sequence:03d}_{tote_info['tote_id_safe']}{image_path.suffix}"
+            new_path = tote_dir / new_filename
+
+            shutil.move(image_path, new_path)
+
+            print(f"    ✓ {analysis['item_name']} (${analysis['estimated_value_usd']:.2f})")
+            if analysis.get('manual_review_recommended'):
+                print(f"    ⚠️  MANUAL REVIEW: {analysis.get('manual_review_reason')}")
+
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "tote_id": tote_info['tote_id'],
+                "item_sequence": item_sequence,
+                "item_name": analysis['item_name'],
+                "image_file": new_filename,
+                "image_path": str(new_path),
+                "ai_analysis": analysis,
+                "pricecharting_data": pricecharting_results,
+                "status": "success"
+            }
+
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError) as e:
+            if attempt < MAX_RETRIES:
+                wait = 2 ** attempt
+                print(f"    ⚠️  Network error: {e}")
+                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{MAX_RETRIES})...")
+                time.sleep(wait)
+            else:
+                print(f"    ❌ ERROR after {MAX_RETRIES} attempts: {e}")
+                return {
+                    "timestamp": datetime.now().isoformat(),
+                    "tote_id": tote_info.get('tote_id', 'Unknown'),
+                    "item_sequence": item_sequence,
+                    "original_file": str(image_path),
+                    "error": str(e),
+                    "status": "failed"
+                }
+
+        except Exception as e:
+            print(f"    ❌ ERROR: {e}")
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "tote_id": tote_info.get('tote_id', 'Unknown'),
+                "item_sequence": item_sequence,
+                "original_file": str(image_path),
+                "error": str(e),
+                "status": "failed"
+            }
 
 # ========================================
 # FILE WATCHER
