@@ -100,6 +100,7 @@ AUTOCROP_ENABLED = os.getenv('AUTOCROP_ENABLED', 'true').lower() == 'true'
 AUTOCROP_FUZZ = int(os.getenv('AUTOCROP_FUZZ', '10'))
 PRICECHARTING_MAX_RESULTS = int(os.getenv('PRICECHARTING_MAX_RESULTS', '5'))
 VERBOSE_LOGGING = os.getenv('VERBOSE_LOGGING', 'false').lower() == 'true'
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '2'))
 
 # Validate required settings
 if not SERPAPI_KEY:
@@ -464,17 +465,29 @@ def validate_inventory_item(data, num_pricecharting_results=0):
     
     # Validate confidence
     if data['confidence'] not in ['HIGH', 'MEDIUM', 'LOW']:
-        raise ValueError(f"Invalid confidence: '{data['confidence']}' (must be HIGH/MEDIUM/LOW)")
-    
+        if data['confidence'] is None:
+            data['confidence'] = 'LOW'
+            print(f"    ⚠️  LLM returned null confidence, defaulting to LOW")
+        else:
+            raise ValueError(f"Invalid confidence: '{data['confidence']}' (must be HIGH/MEDIUM/LOW)")
+
     # Validate pricing_basis (with auto-fix for LLM indecision)
     valid_pricing = [
         'COMPLETE_IN_BOX', 'LOOSE_CART', 'LOOSE_DISC', 'NEW_SEALED',
         'LOOSE_ACCESSORY', 'CONSOLE_ONLY', 'COMPLETE_CONSOLE',
         'HANDHELD_ONLY', 'COMPLETE_HANDHELD', 'USED'
     ]
-    
+
     pricing_basis = data['pricing_basis']
-    
+
+    if pricing_basis is None:
+        data['pricing_basis'] = 'USED'
+        data['manual_review_recommended'] = True
+        if not data.get('manual_review_reason'):
+            data['manual_review_reason'] = "LLM could not determine condition - please verify"
+        print(f"    ⚠️  LLM returned null pricing_basis, defaulting to USED and flagging for review")
+        pricing_basis = data['pricing_basis']
+
     # Handle LLM indecision (e.g., "COMPLETE_IN_BOX/LOOSE_CART")
     if '/' in pricing_basis:
         print(f"    ⚠️  LLM uncertain about condition: '{pricing_basis}'")
@@ -513,8 +526,8 @@ def validate_inventory_item(data, num_pricecharting_results=0):
         raise ValueError("warnings must be array")
     
     # Validate item_name is not empty
-    if not data['item_name'] or data['item_name'].strip() == '':
-        raise ValueError("item_name cannot be empty")
+    if not data['item_name'] or not isinstance(data['item_name'], str) or data['item_name'].strip() == '':
+        raise ValueError("item_name cannot be empty or null")
     
     # Validate new optional fields (grade, issue_number, grader, year)
     if data.get('issue_number') is not None and not isinstance(data['issue_number'], str):
@@ -771,11 +784,11 @@ Return ONLY valid JSON."""
 # ITEM PROCESSING
 # ========================================
 
-def process_item(image_path, tote_info, item_sequence, max_retries=2):
+def process_item(image_path, tote_info, item_sequence):
     """Process single item scan with retry on transient errors"""
     print(f"\n  📦 Item #{item_sequence} in {tote_info['tote_id']}")
 
-    for attempt in range(1, max_retries + 1):
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
             # Google Lens
             print(f"    🔍 Google Lens...")
@@ -824,13 +837,13 @@ def process_item(image_path, tote_info, item_sequence, max_retries=2):
 
         except (requests.exceptions.Timeout,
                 requests.exceptions.ConnectionError) as e:
-            if attempt < max_retries:
+            if attempt < MAX_RETRIES:
                 wait = 2 ** attempt
                 print(f"    ⚠️  Network error: {e}")
-                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{max_retries})...")
+                print(f"    🔄 Retrying in {wait}s (attempt {attempt}/{MAX_RETRIES})...")
                 time.sleep(wait)
             else:
-                print(f"    ❌ ERROR after {max_retries} attempts: {e}")
+                print(f"    ❌ ERROR after {MAX_RETRIES} attempts: {e}")
                 return {
                     "timestamp": datetime.now().isoformat(),
                     "tote_id": tote_info.get('tote_id', 'Unknown'),
