@@ -117,7 +117,7 @@ Auto-Crop → Rename → Organize → Save to Inventory
 ### Software
 
 - **Python 3.8+**
-- **Ollama** with a capable model (recommended: qwen2.5:32b, plus a vision model like minicpm-v for graded items)
+- **Ollama** with a capable model (recommended: qwen2.5:32b, plus a vision model like deepseek-ocr for graded items)
 - **ImageMagick** (for auto-cropping)
 - **ngrok** (free or paid, for exposing local images to Google Lens)
 
@@ -234,7 +234,7 @@ For professionally graded (slabbed) comics and trading cards, use the graded inv
 # Terminal 3: Start both models
 ollama run qwen2.5:32b
 # In another terminal:
-ollama run minicpm-v
+ollama run deepseek-ocr
 
 # Terminal 5: Start graded inventory scanner
 python automated_graded_inventory.py
@@ -298,7 +298,7 @@ OLLAMA_TIMEOUT=120
 **Vision Model (graded inventory only):**
 
 ```env
-VISION_MODEL=minicpm-v         # Multimodal model for reading slab labels
+VISION_MODEL=deepseek-ocr         # Multimodal model for reading slab labels
 VISION_TIMEOUT=120             # Timeout for vision model requests
 DOWNSCALE_DPI=72               # Target DPI for images sent to vision model
 ```

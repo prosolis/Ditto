@@ -29,7 +29,7 @@ SETUP:
    Terminal 1: cd <SCAN_DIR parent> && python3 -m http.server 8000
    Terminal 2: ngrok http 8000  (copy the https URL to .env)
    Terminal 3: ollama run qwen2.5:32b
-   Terminal 4: ollama run minicpm-v  (or your VISION_MODEL)
+   Terminal 4: ollama run deepseek-ocr  (or your VISION_MODEL)
 
 USAGE:
 ------
@@ -110,7 +110,7 @@ LLM_MODEL = os.getenv('LLM_MODEL', 'qwen2.5:32b')
 OLLAMA_TIMEOUT = int(os.getenv('OLLAMA_TIMEOUT', '120'))
 
 # Vision Model Configuration (multimodal LLM - Pass 1)
-VISION_MODEL = os.getenv('VISION_MODEL', 'minicpm-v')
+VISION_MODEL = os.getenv('VISION_MODEL', 'deepseek-ocr')
 VISION_TIMEOUT = int(os.getenv('VISION_TIMEOUT', '120'))
 DOWNSCALE_DPI = int(os.getenv('DOWNSCALE_DPI', '72'))
 
