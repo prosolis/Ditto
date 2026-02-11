@@ -8,6 +8,7 @@ I built this because I'm planning to move internationally with a large collectio
 
 - **Google Lens** visual identification via SerpAPI
 - **Local LLM** (Qwen 2.5:32b) for intelligent data synthesis and regional variant detection
+- **Multimodal vision LLM** for reading grades directly from slab images (graded comics & cards)
 - **PriceCharting API** for authoritative video game, LEGO, comic book, and trading card pricing
 - **QR-coded tote tracking** for physical organization
 - **Automated file organization** with sequence-numbered filenames
@@ -20,6 +21,7 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 ### Core Functionality
 
 - ✅ **Live scanning workflow** - Watch directory for new book scanner images
+- ✅ **Graded item scanning** - Two-pass LLM reads grades from slabs, then identifies items
 - ✅ **Batch processing** - Process manually photographed large items
 - ✅ **QR code tote tracking** - Organize items by physical storage container
 - ✅ **Intelligent item identification** - Google Lens + LLM synthesis
@@ -75,8 +77,16 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 ### Live Scanning Workflow
 
 ```
-Czur Scanner → QR Code Detection → Google Lens → PriceCharting (optional) → 
+Czur Scanner → QR Code Detection → Google Lens → PriceCharting (optional) →
 LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
+```
+
+### Graded Item Workflow (Two-Pass LLM)
+
+```
+Czur Scanner → QR Code Detection → Vision LLM (reads grade from slab) →
+Google Lens → PriceCharting (optional) → Text LLM (synthesizes all data) →
+Auto-Crop → Rename → Organize → Save to Inventory
 ```
 
 ### Components
@@ -84,12 +94,13 @@ LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
 **Scripts:**
 
 1. `automated_inventory.py` - Live automated scanning
-2. `batch_inventory.py` - Batch process manual photos
-3. `generate_labels.py` - Create QR-coded tote labels
-4. `manage_seals.py` - Track security seals
-5. `update_pricecharting.py` - Batch pricing updates
-6. `remove_item.py` - Item removal with backup
-7. `pricecharting_collection_generator.py` - Generate PriceCharting collection upload files
+2. `automated_graded_inventory.py` - Live scanning for graded comics & trading cards (two-pass LLM)
+3. `batch_inventory.py` - Batch process manual photos
+4. `generate_labels.py` - Create QR-coded tote labels
+5. `manage_seals.py` - Track security seals
+6. `update_pricecharting.py` - Batch pricing updates
+7. `remove_item.py` - Item removal with backup
+8. `pricecharting_collection_generator.py` - Generate PriceCharting collection upload files
 
 **Data Flow:**
 
@@ -106,7 +117,7 @@ LLM Analysis → Auto-Crop → Rename → Organize → Save to Inventory
 ### Software
 
 - **Python 3.8+**
-- **Ollama** with a capable model (recommended: qwen2.5:32b)
+- **Ollama** with a capable model (recommended: qwen2.5:32b, plus a vision model like deepseek-ocr for graded items)
 - **ImageMagick** (for auto-cropping)
 - **ngrok** (free or paid, for exposing local images to Google Lens)
 
@@ -213,6 +224,29 @@ python automated_inventory.py
    - Moves to organized folder
    - Appends to inventory
 
+### Start Graded Item Scanning
+
+For professionally graded (slabbed) comics and trading cards, use the graded inventory scanner. Same workflow as above, but with a vision model that reads grades from slab labels.
+
+```bash
+# Terminal 1-2: Same HTTP server + ngrok setup as above
+
+# Terminal 3: Start both models
+ollama run qwen2.5:32b
+# In another terminal:
+ollama run deepseek-ocr
+
+# Terminal 5: Start graded inventory scanner
+python automated_graded_inventory.py
+```
+
+The graded scanner performs two LLM passes per item:
+
+1. **Pass 1 (Vision):** Sends a DPI-downscaled image to the multimodal LLM to read the grade, grading authority (CGC, PSA, etc.), certification number, and label color from the slab
+2. **Pass 2 (Text):** Feeds the vision-extracted grade info alongside Google Lens results and PriceCharting data into Qwen 2.5 for final structured JSON output
+
+Organized filenames include grade info: `Amazing_Spider-Man_300_CGC_98_001_TOTE-001.jpg`
+
 ### Batch Process Large Items
 
 ```bash
@@ -259,6 +293,14 @@ VERBOSE_LOGGING=false          # Show detailed QR detection and debug output
 ```env
 LLM_MODEL=qwen2.5:32b
 OLLAMA_TIMEOUT=120
+```
+
+**Vision Model (graded inventory only):**
+
+```env
+VISION_MODEL=deepseek-ocr         # Multimodal model for reading slab labels
+VISION_TIMEOUT=120             # Timeout for vision model requests
+DOWNSCALE_DPI=72               # Target DPI for images sent to vision model
 ```
 
 See `.env.example` for complete documentation.
@@ -534,10 +576,11 @@ The system generates inventory suitable for international customs:
 
 ```
 .
-├── automated_inventory.py      # Live scanning
-├── batch_inventory.py         # Batch processing
-├── generate_labels.py         # QR label generation
-├── manage_seals.py           # Seal tracking
+├── automated_inventory.py                # Live scanning
+├── automated_graded_inventory.py         # Live scanning for graded items (two-pass LLM)
+├── batch_inventory.py                    # Batch processing
+├── generate_labels.py                    # QR label generation
+├── manage_seals.py                       # Seal tracking
 ├── update_pricecharting.py               # Price updates
 ├── pricecharting_collection_generator.py # PriceCharting collection export
 ├── remove_item.py                        # Item removal
