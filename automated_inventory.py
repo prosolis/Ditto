@@ -607,6 +607,55 @@ def validate_inventory_item(data, num_pricecharting_results=0):
     return True
 
 # ========================================
+# LLM JSON SANITIZATION
+# ========================================
+
+def sanitize_llm_json(text):
+    """Fix common JSON issues in LLM output that cause parse failures.
+
+    Handles: control characters, trailing commas, and inline comments.
+    """
+    # Remove control characters (except tab, newline, carriage return)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+
+    # Remove trailing commas before } or ] (common LLM mistake)
+    text = re.sub(r',\s*([}\]])', r'\1', text)
+
+    # Remove single-line comments (LLM sometimes adds // comments in JSON)
+    text = re.sub(r'//[^\n]*', '', text)
+
+    return text
+
+
+def repair_json_at_error(text, max_attempts=5):
+    """Iteratively repair JSON by escaping quotes at error positions.
+
+    When json.loads fails with 'Expecting ',' delimiter', it usually means
+    an unescaped double quote inside a string value prematurely closed the
+    string.  This function escapes the problematic quote and retries.
+    """
+    for attempt in range(max_attempts):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            err_msg = str(e)
+            pos = e.pos
+
+            if 'Expecting' in err_msg and ',' in err_msg and pos > 0:
+                # The quote just before the error position likely closed
+                # a string prematurely.  Find the last quote before pos
+                # and escape it.
+                last_quote = text.rfind('"', 0, pos)
+                if last_quote > 0 and text[last_quote - 1:last_quote] != '\\':
+                    text = text[:last_quote] + '\\"' + text[last_quote + 1:]
+                    continue
+
+            # For other errors, or if we couldn't find a quote to fix, give up
+            raise
+
+    return json.loads(text)
+
+# ========================================
 # LLM ANALYSIS
 # ========================================
 
@@ -799,19 +848,14 @@ Return ONLY valid JSON."""
             response_text = response_text.split('```')[1].split('```')[0].strip()
 
         # Sanitize JSON - fix common LLM output issues
-        # Remove control characters that break JSON parsing
-        response_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', response_text)
-        # Fix unescaped newlines inside JSON string values
-        response_text = re.sub(r'(?<=": ")(.*?)(?="[,\s\n}])',
-                               lambda m: m.group(0).replace('\n', '\\n'),
-                               response_text, flags=re.DOTALL)
+        response_text = sanitize_llm_json(response_text)
 
-        # Parse JSON - try repair if initial parse fails
+        # Parse JSON - try multiple repair strategies if initial parse fails
         parsed = None
         try:
             parsed = json.loads(response_text)
         except json.JSONDecodeError:
-            # Attempt to extract the JSON object even if there's trailing garbage
+            # Strategy 1: Extract JSON object (handles trailing garbage text)
             json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
                 try:
@@ -820,6 +864,17 @@ Return ONLY valid JSON."""
                         print(f"    ⚠️  Recovered JSON after stripping non-JSON content")
                 except json.JSONDecodeError:
                     pass
+
+            # Strategy 2: Fix unescaped quotes at error positions
+            if parsed is None:
+                try:
+                    text_to_repair = json_match.group() if json_match else response_text
+                    parsed = repair_json_at_error(text_to_repair)
+                    if VERBOSE_LOGGING:
+                        print(f"    ⚠️  Recovered JSON after escaping unescaped quotes")
+                except (json.JSONDecodeError, Exception):
+                    pass
+
         if parsed is None:
             if VERBOSE_LOGGING:
                 print(f"    ⚠️  JSON parse error, raw response: {response_text[:500]}")
