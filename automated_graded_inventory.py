@@ -985,7 +985,7 @@ Return ONLY valid JSON."""
                 "model": LLM_MODEL,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.3, "num_ctx": 8192, "num_predict": 2048}
+                "options": {"temperature": 0.3, "num_ctx": 16384, "num_predict": 16384}
             },
             timeout=OLLAMA_TIMEOUT
         )
