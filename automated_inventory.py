@@ -500,7 +500,38 @@ def validate_inventory_item(data, num_pricecharting_results=0):
     
     if data['pricing_basis'] not in valid_pricing:
         raise ValueError(f"Invalid pricing_basis: '{data['pricing_basis']}' (must be one of {valid_pricing})")
-    
+
+    # Enforce platform-based condition defaults
+    # LLM often overrides COMPLETE_IN_BOX with LOOSE_DISC/LOOSE_CART based on search result titles
+    platform = (data.get('platform') or '').lower()
+    category = (data.get('category') or '').lower()
+    pricing_basis = data['pricing_basis']
+
+    cib_mandatory_platforms = [
+        'playstation', 'ps1', 'ps2', 'ps3', 'ps4', 'ps5',
+        'xbox', 'xbox 360', 'xbox one', 'xbox series',
+        'gamecube', 'wii', 'wii u',
+        'sega cd', 'saturn', 'dreamcast',
+        'pc', '3do', 'cdi', 'pc engine cd',
+        'ds', 'nintendo ds', '3ds', 'nintendo 3ds',
+        'switch', 'nintendo switch', 'ps vita', 'vita',
+    ]
+
+    platform_should_be_cib = any(p in platform for p in cib_mandatory_platforms)
+
+    # Also catch category-level disc-based items
+    if not platform_should_be_cib and category == 'video game software' and platform:
+        disc_keywords = ['playstation', 'xbox', 'gamecube', 'dreamcast', 'saturn', 'sega cd', 'wii', '3do', 'cdi']
+        platform_should_be_cib = any(kw in platform for kw in disc_keywords)
+
+    if platform_should_be_cib and pricing_basis in ('LOOSE_DISC', 'LOOSE_CART'):
+        original = pricing_basis
+        data['pricing_basis'] = 'COMPLETE_IN_BOX'
+        data['manual_review_recommended'] = True
+        if not data.get('manual_review_reason'):
+            data['manual_review_reason'] = f"LLM set {original} but platform '{data.get('platform')}' defaults to COMPLETE_IN_BOX - please verify"
+        print(f"    ⚠️  Auto-correcting pricing_basis: {original} → COMPLETE_IN_BOX (platform default for '{data.get('platform')}')")
+
     # Validate numeric fields
     numeric_fields = ['estimated_value_usd', 'value_range_min', 'value_range_max']
     for field in numeric_fields:
@@ -661,27 +692,35 @@ REGIONAL NAMING:
 - Super Nintendo (US) = Super Famicom (JP)
 - NES (US) = Famicom (JP)
 
-CONDITION DEFAULTS (platform-based, you cannot see the actual scan):
+CRITICAL - PRICING_BASIS RULES (you MUST follow these):
 
-**8-BIT/16-BIT CARTRIDGES (default: LOOSE_CART):**
+You CANNOT see the actual item. You are analyzing search results, NOT the item itself.
+Search results often show "loose" or "pre-owned" listings because those are common marketplace listings.
+The condition words in search result titles (e.g., "loose", "cart only", "disc only", "no manual")
+describe OTHER sellers' listings, NOT the item being inventoried.
+
+DO NOT change pricing_basis away from the platform default based on search result titles or conditions.
+The platform-based pricing_basis below is MANDATORY unless an explicit override exception applies.
+
+**8-BIT/16-BIT CARTRIDGES → LOOSE_CART (MANDATORY):**
 - NES, SNES, Genesis, Master System, Game Boy/GBC/GBA, TurboGrafx-16, Atari
 - Neo Geo AES/MVS, Neo Geo Pocket/Color, WonderSwan/Color, Virtual Boy, Game Gear
 
-**DISC-BASED (default: COMPLETE_IN_BOX):**
+**DISC-BASED → COMPLETE_IN_BOX (MANDATORY):**
 - PlayStation, Xbox, GameCube, Sega CD/Saturn/Dreamcast, PC games, Xbox 360
 - 3DO, CDi, PC Engine CD, Wii U, Playstation 2, Playstation 3, Playstation 4
+- Do NOT set LOOSE_DISC just because search results mention "loose" or "disc only"
 
-**MODERN CARTRIDGES (default: COMPLETE_IN_BOX):**
+**MODERN CARTRIDGES → COMPLETE_IN_BOX (MANDATORY):**
 - DS, 3DS, Switch, PS Vita
+- Do NOT set LOOSE_CART just because search results mention "loose" or "cart only"
 
-**SEALED (NEW_SEALED):**
-- Only if search consistently shows "factory sealed", "NIB", "unopened"
+**OVERRIDE EXCEPTIONS (only these justify changing from the mandatory default):**
+- NEW_SEALED: ONLY if search results consistently say "factory sealed", "NIB", "unopened"
+- LOOSE_ACCESSORY: For accessories without original packaging
+- CONSOLE_ONLY, COMPLETE_CONSOLE, HANDHELD_ONLY, COMPLETE_HANDHELD: For console/handheld items based on descriptions
 
-**ACCESSORIES:**
-- LOOSE_ACCESSORY unless search mentions original packaging
-
-**CONSOLES/HANDHELDS:**
-- Use CONSOLE_ONLY, COMPLETE_CONSOLE, HANDHELD_ONLY, COMPLETE_HANDHELD based on descriptions
+You must NOT use LOOSE_DISC or LOOSE_CART for platforms whose mandatory default is COMPLETE_IN_BOX.
 
 PRICECHARTING MATCHING:
 {"- " + str(len(pricecharting_results)) + " options are listed above. Select ONLY from those options (1-" + str(len(pricecharting_results)) + ") or null." if pricecharting_results else "- No PriceCharting data available. pricecharting_match_used MUST be null."}
