@@ -613,7 +613,8 @@ def validate_inventory_item(data, num_pricecharting_results=0):
 def sanitize_llm_json(text):
     """Fix common JSON issues in LLM output that cause parse failures.
 
-    Handles: control characters, trailing commas, and inline comments.
+    Handles: control characters, trailing commas, inline comments,
+    math expressions in numeric values, and truncated responses.
     """
     # Remove control characters (except tab, newline, carriage return)
     text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
@@ -622,9 +623,69 @@ def sanitize_llm_json(text):
     text = re.sub(r',\s*([}\]])', r'\1', text)
 
     # Remove single-line comments (LLM sometimes adds // comments in JSON)
-    text = re.sub(r'//[^\n]*', '', text)
+    # But only outside of string values - look for // not inside quotes
+    # Simple heuristic: // at start of line or after , or after {
+    text = re.sub(r'(?<=,)\s*//[^\n]*', '', text)
+    text = re.sub(r'(?<=\{)\s*//[^\n]*', '', text)
+
+    # Evaluate inline math expressions in numeric value positions
+    # e.g. "value_range_max": 45954.0 / 137  ->  "value_range_max": 335.43
+    def _eval_math(m):
+        expr = m.group(1).strip()
+        try:
+            # Only allow simple arithmetic: numbers and +-*/
+            if re.match(r'^[\d\.\s\+\-\*/\(\)]+$', expr):
+                result = round(float(eval(expr)), 2)
+                return f': {result}'
+        except Exception:
+            pass
+        return m.group(0)
+
+    text = re.sub(r':\s*([\d\.\s\+\-\*/\(\)]+(?:[+\-\*/]\s*[\d\.]+)+)\s*(?=[,}\n\r])',
+                  _eval_math, text)
+
+    # Fix truncated JSON - if the response was cut off mid-stream
+    # Check if braces/brackets are balanced
+    text = _repair_truncated_json(text)
 
     return text
+
+
+def _repair_truncated_json(text):
+    """Attempt to close a truncated JSON response.
+
+    If the LLM hit its output token limit, the JSON may be cut off
+    mid-string or mid-object.  This tries to close it gracefully.
+    """
+    # Quick check: is the JSON already balanced?
+    open_braces = text.count('{') - text.count('}')
+    open_brackets = text.count('[') - text.count(']')
+
+    if open_braces <= 0 and open_brackets <= 0:
+        return text  # Already balanced or not truncated
+
+    stripped = text.rstrip()
+
+    # If we're inside a string value (odd number of unescaped quotes
+    # means an unclosed string), close it
+    # Count unescaped quotes
+    unescaped_quotes = len(re.findall(r'(?<!\\)"', stripped))
+    if unescaped_quotes % 2 == 1:
+        # Unclosed string - close it
+        stripped += '"'
+
+    # Remove any trailing partial key-value (e.g., truncated after a comma
+    # with no value, or a key with no colon)
+    # If it ends with ',' or ':' after our string closure, trim it
+    stripped = re.sub(r'[,:]\s*$', '', stripped)
+
+    # Close any open brackets then braces
+    for _ in range(open_brackets):
+        stripped += ']'
+    for _ in range(open_braces):
+        stripped += '}'
+
+    return stripped
 
 
 def repair_json_at_error(text, max_attempts=5):
