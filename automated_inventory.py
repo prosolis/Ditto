@@ -556,9 +556,13 @@ def validate_inventory_item(data, num_pricecharting_results=0):
     if 'warnings' in data and not isinstance(data['warnings'], list):
         raise ValueError("warnings must be array")
     
-    # Validate item_name is not empty
-    if not data['item_name'] or not isinstance(data['item_name'], str) or data['item_name'].strip() == '':
-        raise ValueError("item_name cannot be empty or null")
+    # Validate item_name is not empty - attempt recovery instead of hard failure
+    if not data.get('item_name') or not isinstance(data.get('item_name'), str) or data['item_name'].strip() == '':
+        data['item_name'] = 'Unidentified Item'
+        data['manual_review_recommended'] = True
+        if not data.get('manual_review_reason'):
+            data['manual_review_reason'] = "LLM could not identify item name - please review and rename"
+        print(f"    ⚠️  LLM returned null/empty item_name, using placeholder and flagging for review")
     
     # Validate new optional fields (grade, issue_number, grader, year)
     if data.get('issue_number') is not None and not isinstance(data['issue_number'], str):
@@ -793,10 +797,46 @@ Return ONLY valid JSON."""
             response_text = response_text.split('```json')[1].split('```')[0].strip()
         elif '```' in response_text:
             response_text = response_text.split('```')[1].split('```')[0].strip()
-        
-        # Parse JSON
-        parsed = json.loads(response_text)
-        
+
+        # Sanitize JSON - fix common LLM output issues
+        # Remove control characters that break JSON parsing
+        response_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', response_text)
+        # Fix unescaped newlines inside JSON string values
+        response_text = re.sub(r'(?<=": ")(.*?)(?="[,\s\n}])',
+                               lambda m: m.group(0).replace('\n', '\\n'),
+                               response_text, flags=re.DOTALL)
+
+        # Parse JSON - try repair if initial parse fails
+        parsed = None
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            # Attempt to extract the JSON object even if there's trailing garbage
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group())
+                    if VERBOSE_LOGGING:
+                        print(f"    ⚠️  Recovered JSON after stripping non-JSON content")
+                except json.JSONDecodeError:
+                    pass
+        if parsed is None:
+            if VERBOSE_LOGGING:
+                print(f"    ⚠️  JSON parse error, raw response: {response_text[:500]}")
+            raise Exception(f"LLM returned invalid JSON")
+
+        # Try to recover item_name from search results if LLM returned null
+        if not parsed.get('item_name') and search_results_text:
+            title_match = re.search(r'VISUALLY SIMILAR ITEMS:\s*\n\s*1\.\s*(.+)', search_results_text)
+            if title_match:
+                fallback_name = title_match.group(1).strip()
+                # Clean common marketplace suffixes
+                fallback_name = re.sub(r'\s*[-|]\s*(eBay|Amazon|Walmart|GameStop|Target|Best Buy).*$', '', fallback_name, flags=re.IGNORECASE)
+                if fallback_name:
+                    parsed['item_name'] = fallback_name
+                    if VERBOSE_LOGGING:
+                        print(f"    ⚠️  Using top search result as item_name fallback: '{fallback_name}'")
+
         # Validate schema
         num_pc = len(pricecharting_results) if pricecharting_results else 0
         try:
@@ -808,14 +848,8 @@ Return ONLY valid JSON."""
             # Include item name in error for context
             item_hint = parsed.get('item_name', 'Unknown')
             raise Exception(f"Invalid LLM output for '{item_hint}': {e}")
-        
+
         return parsed
-        
-    except json.JSONDecodeError as e:
-        if VERBOSE_LOGGING:
-            print(f"    ⚠️  JSON parse error: {e}")
-            print(f"    Raw response: {response_text[:500]}")
-        raise Exception(f"LLM returned invalid JSON: {e}")
     except Exception as e:
         raise Exception(f"LLM failed: {e}")
 
