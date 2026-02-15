@@ -33,9 +33,18 @@ SETUP:
 
 USAGE:
 ------
-python automated_graded_inventory.py
+python automated_graded_inventory.py                    # Normal mode (watch for scans)
+python automated_graded_inventory.py --dry-run img.jpg  # Test mode (no tote, no save)
 
-Then use Czur scanner:
+DRY RUN MODE:
+-------------
+  --dry-run IMAGE [IMAGE ...]
+    Process one or more images through the Vision LLM -> API -> Text LLM
+    pipeline without tote scanning, auto-cropping, file organization, or
+    saving to disk. Results are printed as JSON. Useful for testing the
+    two-pass graded identification workflow end-to-end.
+
+Then use Czur scanner (normal mode):
 1. Scan tote QR label → Creates tote directory, sets context
 2. Scan graded items → Vision reads grade, then full analysis
 3. Repeat for next tote
@@ -68,6 +77,7 @@ SUPPORTED FORMATS:
 jpg, jpeg, png, webp, gif, bmp, tiff, tif
 """
 
+import argparse
 import requests
 import json
 import os
@@ -1225,7 +1235,101 @@ class GradedInventoryScanner(FileSystemEventHandler):
 # MAIN
 # ========================================
 
+def dry_run(image_paths):
+    """Process images through the Vision LLM -> API -> Text LLM pipeline
+    without tote scanning or saving to disk.
+
+    Useful for testing the two-pass graded identification workflow
+    end-to-end without needing QR-coded totes or a scanner producing
+    live files.
+    """
+    print("="*70)
+    print("DRY RUN MODE - No tote scanning, no files saved")
+    print("Two-Pass LLM: Vision Grade Extraction + Text Analysis")
+    print("="*70)
+    print(f"\n  Vision Model (Pass 1): {VISION_MODEL}")
+    print(f"  Text Model (Pass 2): {LLM_MODEL}")
+    print(f"  Downscale DPI: {DOWNSCALE_DPI}")
+    print(f"  PriceCharting: {'Enabled' if PRICECHARTING_API_KEY else 'Disabled'}")
+    print(f"  Images to process: {len(image_paths)}\n")
+
+    results = []
+    for idx, image_path_str in enumerate(image_paths, 1):
+        image_path = Path(image_path_str)
+        if not image_path.exists():
+            print(f"\n  File not found: {image_path}")
+            continue
+        if image_path.suffix.lower() not in SUPPORTED_FORMATS:
+            print(f"\n  Unsupported format: {image_path.suffix}")
+            continue
+
+        print(f"\n  [{idx}/{len(image_paths)}] {image_path.name}")
+
+        try:
+            # Pass 1: Vision LLM reads grade from slab
+            print(f"    Pass 1: Vision grade extraction...")
+            vision_grade_info = extract_grade_from_image(image_path)
+
+            # Google Lens
+            print(f"    Google Lens...")
+            search_results = reverse_image_search(image_path)
+            formatted_results = format_search_results(search_results)
+
+            # PriceCharting check
+            should_check, potential_name, category, platform = should_check_pricecharting(search_results)
+            pricecharting_results = None
+            if should_check:
+                print(f"    PriceCharting ({category})...")
+                pricecharting_results = query_pricecharting(potential_name, category, platform)
+
+            # Pass 2: Text LLM analysis
+            print(f"    Pass 2: LLM analyzing (grade + search data)...")
+            analysis = analyze_with_llm(formatted_results, vision_grade_info, pricecharting_results)
+
+            result = {
+                "timestamp": datetime.now().isoformat(),
+                "source_file": str(image_path),
+                "ai_analysis": analysis,
+                "vision_grade_info": vision_grade_info,
+                "pricecharting_data": pricecharting_results,
+                "status": "success"
+            }
+            results.append(result)
+
+            grade_display = ""
+            if analysis.get('grader') and analysis.get('grade') is not None:
+                grade_display = f" [{analysis['grader']} {analysis['grade']}]"
+            print(f"    -> {analysis['item_name']}{grade_display} (${analysis['estimated_value_usd']:.2f})")
+            if analysis.get('manual_review_recommended'):
+                print(f"    MANUAL REVIEW: {analysis.get('manual_review_reason')}")
+
+        except Exception as e:
+            print(f"    ERROR: {e}")
+            results.append({
+                "timestamp": datetime.now().isoformat(),
+                "source_file": str(image_path),
+                "error": str(e),
+                "status": "failed"
+            })
+
+    # Print results as JSON to stdout
+    print(f"\n{'='*70}")
+    print("DRY RUN RESULTS")
+    print(f"{'='*70}")
+    print(json.dumps(results, indent=2))
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Automated Graded Inventory Scanner')
+    parser.add_argument('--dry-run', nargs='+', metavar='IMAGE',
+                        help='Test mode: process image(s) through Vision LLM -> API -> '
+                             'Text LLM pipeline without tote scanning or saving to disk')
+    args = parser.parse_args()
+
+    if args.dry_run:
+        dry_run(args.dry_run)
+        return
+
     print("="*70)
     print("AUTOMATED GRADED INVENTORY SYSTEM")
     print("Two-Pass LLM: Vision Grade Extraction + Text Analysis")
@@ -1258,7 +1362,7 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n\n🛑 Stopping...")
+        print("\n\n Stopping...")
         observer.stop()
         observer.join()
 
