@@ -30,6 +30,7 @@ Perfect for collectors, expats, or anyone needing professional inventory documen
 - ✅ **Duplicate handling** - Sequence numbers in filenames uniquely identify each item, even duplicates
 - ✅ **Validation & auto-correction** - Catches and fixes LLM output errors
 - ✅ **Manual review flagging** - Highlights uncertain identifications
+- ✅ **Dry-run test mode** - Test the API → LLM pipeline without tote scans or disk writes
 
 ### Data Management
 
@@ -93,8 +94,8 @@ Auto-Crop → Rename → Organize → Save to Inventory
 
 **Scripts:**
 
-1. `automated_inventory.py` - Live automated scanning
-2. `automated_graded_inventory.py` - Live scanning for graded comics & trading cards (two-pass LLM)
+1. `automated_inventory.py` - Live automated scanning (supports `--dry-run`)
+2. `automated_graded_inventory.py` - Live scanning for graded comics & trading cards, two-pass LLM (supports `--dry-run`)
 3. `batch_inventory.py` - Batch process manual photos
 4. `generate_labels.py` - Create QR-coded tote labels
 5. `manage_seals.py` - Track security seals
@@ -246,6 +247,20 @@ The graded scanner performs two LLM passes per item:
 2. **Pass 2 (Text):** Feeds the vision-extracted grade info alongside Google Lens results and PriceCharting data into Qwen 2.5 for final structured JSON output
 
 Organized filenames include grade info: `Amazing_Spider-Man_300_CGC_98_001_TOTE-001.jpg`
+
+### Dry-Run Test Mode
+
+Test the identification pipeline end-to-end without tote scanning, auto-cropping, file organization, or saving to disk. Accepts one or more image paths and prints JSON results to stdout.
+
+```bash
+# Test standard inventory (API → LLM)
+python automated_inventory.py --dry-run photo1.jpg photo2.jpg
+
+# Test graded inventory (Vision LLM → API → Text LLM)
+python automated_graded_inventory.py --dry-run slab1.jpg slab2.jpg
+```
+
+This is useful for verifying your API keys, ngrok tunnel, and Ollama models are working correctly before starting a full scanning session.
 
 ### Batch Process Large Items
 
@@ -594,7 +609,14 @@ Contributions welcome! Please open an issue first to discuss changes.
 
 ### Testing
 
-Test with small batches first:
+Use `--dry-run` to verify the pipeline without tote scans or disk writes:
+
+```bash
+python automated_inventory.py --dry-run test_image.jpg
+python automated_graded_inventory.py --dry-run test_slab.jpg
+```
+
+Then test with small batches in live mode:
 
 1. Generate 5 test labels
 2. Scan 10-20 items
