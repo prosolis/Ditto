@@ -325,15 +325,16 @@ def should_check_pricecharting(google_results):
         "textbook", "audiobook", "manga"
     ]) or ("book" in first_match and not is_comic)
 
-    if not (is_game or is_lego or is_comic or is_card or is_dvd or is_bluray or is_cd or is_book):
+    # PriceCharting only supports games, LEGO, comics, and trading cards
+    if not (is_game or is_lego or is_comic or is_card):
         return False, None, None, None
-    
+
     # Extract potential name and details
     potential_name = visual_matches[0].get('title', '').split('-')[0].strip()
-    
+
     category = None
     platform = None
-    
+
     if is_game:
         category = "Video Game Software"
         # Try to detect platform
@@ -359,15 +360,7 @@ def should_check_pricecharting(google_results):
         category = "Comic Books"
     elif is_card:
         category = "Trading Cards"
-    elif is_bluray:
-        category = "Blu-ray"
-    elif is_dvd:
-        category = "DVD"
-    elif is_cd:
-        category = "CD"
-    elif is_book:
-        category = "Books"
-    
+
     return True, potential_name, category, platform
 
 def query_pricecharting(item_name, category=None, platform=None):
@@ -432,14 +425,6 @@ def query_pricecharting(item_name, category=None, platform=None):
             search_query = f"comic {item_name}"
         elif category == "Trading Cards":
             search_query = item_name
-        elif category == "DVD":
-            search_query = f"dvd {item_name}"
-        elif category == "Blu-ray":
-            search_query = f"blu-ray {item_name}"
-        elif category == "CD":
-            search_query = f"cd {item_name}"
-        elif category == "Books":
-            search_query = f"book {item_name}"
 
         # Search
         params = {"t": PRICECHARTING_API_KEY, "q": search_query}
