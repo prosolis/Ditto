@@ -22,9 +22,18 @@ SETUP:
 
 USAGE:
 ------
-python inventory_scanner.py
+python automated_inventory.py                    # Normal mode (watch for scans)
+python automated_inventory.py --dry-run img.jpg  # Test mode (no tote, no save)
 
-Then use Czur scanner:
+DRY RUN MODE:
+-------------
+  --dry-run IMAGE [IMAGE ...]
+    Process one or more images through the API -> LLM pipeline without
+    tote scanning, auto-cropping, file organization, or saving to disk.
+    Results are printed as JSON. Useful for testing the identification
+    workflow end-to-end.
+
+Then use Czur scanner (normal mode):
 1. Scan tote QR label → Creates tote directory, sets context
 2. Scan items → Auto-identified, renamed, organized
 3. Repeat for next tote
@@ -56,6 +65,7 @@ SUPPORTED FORMATS:
 jpg, jpeg, png, webp, gif, bmp, tiff, tif
 """
 
+import argparse
 import requests
 import json
 import os
@@ -1204,7 +1214,88 @@ class InventoryScanner(FileSystemEventHandler):
 # MAIN
 # ========================================
 
+def dry_run(image_paths):
+    """Process images through the API -> LLM pipeline without tote scanning or saving to disk.
+
+    Useful for testing the identification workflow end-to-end without
+    needing QR-coded totes or a scanner producing live files.
+    """
+    print("="*70)
+    print("DRY RUN MODE - No tote scanning, no files saved")
+    print("="*70)
+    print(f"\n  Model: {LLM_MODEL}")
+    print(f"  PriceCharting: {'Enabled' if PRICECHARTING_API_KEY else 'Disabled'}")
+    print(f"  Images to process: {len(image_paths)}\n")
+
+    results = []
+    for idx, image_path_str in enumerate(image_paths, 1):
+        image_path = Path(image_path_str)
+        if not image_path.exists():
+            print(f"\n  File not found: {image_path}")
+            continue
+        if image_path.suffix.lower() not in SUPPORTED_FORMATS:
+            print(f"\n  Unsupported format: {image_path.suffix}")
+            continue
+
+        print(f"\n  [{idx}/{len(image_paths)}] {image_path.name}")
+
+        try:
+            # Google Lens
+            print(f"    Google Lens...")
+            search_results = reverse_image_search(image_path)
+            formatted_results = format_search_results(search_results)
+
+            # PriceCharting check
+            should_check, potential_name, category, platform = should_check_pricecharting(search_results)
+            pricecharting_results = None
+            if should_check:
+                print(f"    PriceCharting ({category})...")
+                pricecharting_results = query_pricecharting(potential_name, category, platform)
+
+            # LLM analysis
+            print(f"    LLM analyzing...")
+            analysis = analyze_with_llm(formatted_results, pricecharting_results)
+
+            result = {
+                "timestamp": datetime.now().isoformat(),
+                "source_file": str(image_path),
+                "ai_analysis": analysis,
+                "pricecharting_data": pricecharting_results,
+                "status": "success"
+            }
+            results.append(result)
+
+            print(f"    -> {analysis['item_name']} (${analysis['estimated_value_usd']:.2f})")
+            if analysis.get('manual_review_recommended'):
+                print(f"    MANUAL REVIEW: {analysis.get('manual_review_reason')}")
+
+        except Exception as e:
+            print(f"    ERROR: {e}")
+            results.append({
+                "timestamp": datetime.now().isoformat(),
+                "source_file": str(image_path),
+                "error": str(e),
+                "status": "failed"
+            })
+
+    # Print results as JSON to stdout
+    print(f"\n{'='*70}")
+    print("DRY RUN RESULTS")
+    print(f"{'='*70}")
+    print(json.dumps(results, indent=2))
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Automated Inventory Scanner')
+    parser.add_argument('--dry-run', nargs='+', metavar='IMAGE',
+                        help='Test mode: process image(s) through API -> LLM pipeline '
+                             'without tote scanning or saving to disk')
+    args = parser.parse_args()
+
+    if args.dry_run:
+        dry_run(args.dry_run)
+        return
+
     print("="*70)
     print("AUTOMATED INVENTORY SYSTEM")
     print("="*70)
@@ -1217,26 +1308,26 @@ def main():
     if AUTOCROP_ENABLED:
         print(f"  Crop fuzz: {AUTOCROP_FUZZ}%")
     print("\n" + "="*70 + "\n")
-    
+
     input("Press Enter to start...")
-    
+
     scanner = InventoryScanner()
     observer = Observer()
     observer.schedule(scanner, str(SCAN_DIR), recursive=False)
     observer.start()
-    
+
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n\n🛑 Stopping...")
+        print("\n\n Stopping...")
         observer.stop()
         observer.join()
-        
+
         successful = sum(1 for i in scanner.inventory if i['status'] == 'success')
-        total_value = sum(i['ai_analysis']['estimated_value_usd'] 
+        total_value = sum(i['ai_analysis']['estimated_value_usd']
                          for i in scanner.inventory if i['status'] == 'success')
-        
+
         print(f"\n{'='*70}")
         print("FINAL SUMMARY")
         print(f"{'='*70}")
