@@ -297,7 +297,35 @@ def should_check_pricecharting(google_results):
         "topps", "panini", "upper deck", "psa", "beckett", "graded card"
     ])
 
-    if not (is_game or is_lego or is_comic or is_card):
+    # DVD indicators
+    is_dvd = any(x in first_match for x in [
+        "dvd", "widescreen edition", "fullscreen edition",
+        "special edition dvd", "collector's edition dvd"
+    ])
+
+    # Blu-ray indicators
+    is_bluray = any(x in first_match for x in [
+        "blu-ray", "blu ray", "bluray", "4k uhd", "4k ultra hd",
+        "steelbook", "criterion collection"
+    ])
+
+    # Audio CD indicators
+    is_cd = any(x in first_match for x in [
+        "audio cd", "music cd", "cd album", "compact disc",
+        "vinyl", "lp record", "phonograph"
+    ]) or ("cd" in first_match and any(x in first_match for x in [
+        "album", "deluxe edition", "remastered", "soundtrack",
+        "greatest hits", "discography"
+    ]))
+
+    # Book indicators (non-comic)
+    is_book = any(x in first_match for x in [
+        "hardcover", "paperback", "hardback", "softcover",
+        "isbn", "novel", "edition book", "first edition",
+        "textbook", "audiobook", "manga"
+    ]) or ("book" in first_match and not is_comic)
+
+    if not (is_game or is_lego or is_comic or is_card or is_dvd or is_bluray or is_cd or is_book):
         return False, None, None, None
     
     # Extract potential name and details
@@ -331,6 +359,14 @@ def should_check_pricecharting(google_results):
         category = "Comic Books"
     elif is_card:
         category = "Trading Cards"
+    elif is_bluray:
+        category = "Blu-ray"
+    elif is_dvd:
+        category = "DVD"
+    elif is_cd:
+        category = "CD"
+    elif is_book:
+        category = "Books"
     
     return True, potential_name, category, platform
 
@@ -396,6 +432,14 @@ def query_pricecharting(item_name, category=None, platform=None):
             search_query = f"comic {item_name}"
         elif category == "Trading Cards":
             search_query = item_name
+        elif category == "DVD":
+            search_query = f"dvd {item_name}"
+        elif category == "Blu-ray":
+            search_query = f"blu-ray {item_name}"
+        elif category == "CD":
+            search_query = f"cd {item_name}"
+        elif category == "Books":
+            search_query = f"book {item_name}"
 
         # Search
         params = {"t": PRICECHARTING_API_KEY, "q": search_query}
@@ -829,6 +873,13 @@ The platform-based pricing_basis below is MANDATORY unless an explicit override 
 - DS, 3DS, Switch, PS Vita
 - Do NOT set LOOSE_CART just because search results mention "loose" or "cart only"
 
+**PHYSICAL MEDIA → COMPLETE_IN_BOX (MANDATORY):**
+- DVD, Blu-ray, CD (case + disc + inserts/booklet is the standard)
+- Do NOT set LOOSE_DISC just because search results mention "disc only"
+
+**BOOKS → USED (DEFAULT):**
+- Books do not have packaging-based conditions; use USED by default
+
 **OVERRIDE EXCEPTIONS (only these justify changing from the mandatory default):**
 - NEW_SEALED: ONLY if search results consistently say "factory sealed", "NIB", "unopened"
 - LOOSE_ACCESSORY: For accessories without original packaging
@@ -852,7 +903,7 @@ COMIC BOOK GRADING:
 - If no grade info available, set to null
 
 CATEGORIES:
-Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Trading Cards, Electronics, Collectibles
+Video Game Software, Video Game Console, Video Game Accessory, Handheld Game System, LEGO, Comic Books, Books, Trading Cards, DVD, Blu-ray, CD, Electronics, Collectibles
 
 PERSONAL_EFFECT_ELIGIBLE:
 - true: typical consumer items for personal use
@@ -878,6 +929,34 @@ TRADING CARDS:
 - item_name should include the card name AND set name (e.g., "Charizard Pokemon Base Set")
 - issue_number is the card number within the set
 - platform field should be null for trading cards
+
+DVD:
+- Category "DVD" for: DVD movies, TV series box sets on DVD, special/collector's edition DVDs
+- item_name should include the movie/show title and edition if notable (e.g., "The Matrix Widescreen Edition")
+- platform field should be null for DVDs
+- pricing_basis should be COMPLETE_IN_BOX (case + disc + inserts) by default
+
+BLU-RAY:
+- Category "Blu-ray" for: Blu-ray movies, 4K UHD Blu-ray, TV series on Blu-ray, steelbooks
+- item_name should include the title and format if notable (e.g., "Blade Runner 2049 4K UHD", "Jaws Steelbook")
+- Note "4K UHD" in item_name when applicable
+- platform field should be null for Blu-rays
+- pricing_basis should be COMPLETE_IN_BOX by default
+
+CD:
+- Category "CD" for: music albums, singles, soundtrack CDs, box sets
+- item_name should include artist and album title (e.g., "Pink Floyd - The Dark Side of the Moon")
+- platform field should be null for CDs
+- pricing_basis should be COMPLETE_IN_BOX (jewel case + disc + booklet) by default
+
+BOOKS:
+- Category "Books" for: novels, non-fiction, textbooks, manga volumes, art books, reference books
+- Do NOT use this for comic books (single issues or trade paperbacks) - use "Comic Books" instead
+- item_name should include author and title (e.g., "Stephen King - The Shining")
+- Note edition info if visible (e.g., "First Edition", "Signed Copy")
+- platform field should be null for books
+- pricing_basis should be USED by default
+- issue_number can be used for manga volume numbers or book series numbers
 
 Return ONLY valid JSON."""
 
