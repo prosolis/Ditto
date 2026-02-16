@@ -122,23 +122,35 @@ def generate_zpl_labels(num_totes, output_dir="zpl_labels", label_info=DEFAULT_L
     tote_ids = [f"TOTE-{i:03d}" for i in range(1, num_totes + 1)]
 
     # Generate individual ZPL files
+    overwritten = 0
     for idx, tote_id in enumerate(tote_ids, 1):
         zpl_code = generate_zpl_label(tote_id, label_info)
 
         zpl_file = output_path / f"{tote_id}.zpl"
+        existed = zpl_file.exists()
+        if existed:
+            overwritten += 1
         with open(zpl_file, 'w') as f:
             f.write(zpl_code)
 
-        print(f"[{idx}/{num_totes}] {tote_id}")
+        suffix = " (overwritten)" if existed else ""
+        print(f"[{idx}/{num_totes}] {tote_id}{suffix}")
+
+    if overwritten:
+        print(f"\n⚠ Warning: {overwritten} existing label file(s) were overwritten.")
 
     # Generate batch file for printing all labels
     batch_file = output_path / "print_all.zpl"
+    if batch_file.exists():
+        print(f"⚠ Warning: overwriting existing {batch_file}")
     with open(batch_file, 'w') as f:
         for tote_id in tote_ids:
             f.write(generate_zpl_label(tote_id, label_info))
-    
+
     # Generate seal tracking template
     seal_tracking = output_path / "seal_tracking.json"
+    if seal_tracking.exists():
+        print(f"⚠ Warning: overwriting existing {seal_tracking}")
     seal_template = {tote_id: "" for tote_id in tote_ids}
     with open(seal_tracking, 'w') as f:
         json.dump(seal_template, f, indent=2)
@@ -159,10 +171,13 @@ def reprint_label(tote_id, output_dir="zpl_labels", label_info=DEFAULT_LABEL_INF
     zpl_file = output_path / f"{tote_id}.zpl"
 
     # Always regenerate so label_info overrides take effect
+    existed = zpl_file.exists()
     output_path.mkdir(parents=True, exist_ok=True)
     zpl_code = generate_zpl_label(tote_id, label_info)
     with open(zpl_file, 'w') as f:
         f.write(zpl_code)
+    if existed:
+        print(f"⚠ Warning: overwriting existing {zpl_file}")
     print(f"✓ Generated {zpl_file}")
     
     print(f"📄 Label file: {zpl_file}")
