@@ -155,7 +155,7 @@ def sanitize_filename(text):
 
 def local_path_to_url(image_path):
     """Convert local file path to ngrok URL"""
-    relative_path = Path(image_path).relative_to(HTTP_SERVER_ROOT)
+    relative_path = Path(image_path).resolve().relative_to(HTTP_SERVER_ROOT.resolve())
     url_path = str(relative_path).replace('\\', '/')
     return f"{NGROK_URL}/{url_path}"
 
@@ -1255,7 +1255,7 @@ def dry_run(image_paths):
 
     results = []
     for idx, image_path_str in enumerate(image_paths, 1):
-        image_path = Path(image_path_str)
+        image_path = Path(image_path_str).resolve()
         if not image_path.exists():
             print(f"\n  File not found: {image_path}")
             continue
