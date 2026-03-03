@@ -335,7 +335,7 @@ RULES:
                 "model": VISION_MODEL,
                 "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
                 "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": -1}
+                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": 0}
             }
         else:
             payload = {
@@ -343,7 +343,7 @@ RULES:
                 "prompt": prompt,
                 "images": [image_b64],
                 "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": -1}
+                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": 0}
             }
         response = requests.post(
             VISION_ENDPOINT,
