@@ -121,6 +121,7 @@ OLLAMA_TIMEOUT = int(os.getenv('OLLAMA_TIMEOUT', '120'))
 
 # Vision Model Configuration (multimodal LLM - Pass 1)
 VISION_MODEL = os.getenv('VISION_MODEL', 'deepseek-ocr')
+VISION_ENDPOINT = os.getenv('VISION_ENDPOINT', OLLAMA_ENDPOINT)
 VISION_TIMEOUT = int(os.getenv('VISION_TIMEOUT', '120'))
 DOWNSCALE_DPI = int(os.getenv('DOWNSCALE_DPI', '72'))
 
@@ -328,25 +329,42 @@ RULES:
 - Return ONLY the JSON object, no other text"""
 
     try:
-        # Ollama multimodal API uses /api/generate with images array
-        response = requests.post(
-            OLLAMA_ENDPOINT,
-            json={
+        # Ollama multimodal API - use /api/chat format for vision models
+        if '/api/chat' in VISION_ENDPOINT:
+            payload = {
+                "model": VISION_MODEL,
+                "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
+                "stream": False,
+                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512}
+            }
+        else:
+            payload = {
                 "model": VISION_MODEL,
                 "prompt": prompt,
                 "images": [image_b64],
                 "stream": False,
                 "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512}
-            },
+            }
+        response = requests.post(
+            VISION_ENDPOINT,
+            json=payload,
             timeout=VISION_TIMEOUT
         )
 
         if not response.ok:
-            print(f"    ⚠️  Vision model error: {response.status_code}")
+            try:
+                err_detail = response.json().get('error', response.text[:200])
+            except Exception:
+                err_detail = response.text[:200]
+            print(f"    ⚠️  Vision model error {response.status_code}: {err_detail}")
             return {"grade": None, "grading_authority": None, "certification_number": None, "label_color": None}
 
         result = response.json()
-        response_text = result.get('response', '').strip()
+        # /api/chat returns message.content, /api/generate returns response
+        if 'message' in result:
+            response_text = result['message'].get('content', '').strip()
+        else:
+            response_text = result.get('response', '').strip()
 
         if not response_text:
             print(f"    ⚠️  Vision: Empty response")
