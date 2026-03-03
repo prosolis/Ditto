@@ -335,7 +335,7 @@ RULES:
                 "model": VISION_MODEL,
                 "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
                 "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512}
+                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": -1}
             }
         else:
             payload = {
@@ -343,7 +343,7 @@ RULES:
                 "prompt": prompt,
                 "images": [image_b64],
                 "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512}
+                "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512, "num_keep": -1}
             }
         response = requests.post(
             VISION_ENDPOINT,
@@ -777,7 +777,12 @@ def validate_inventory_item(data, num_pricecharting_results=0):
         data['year'] = int(data['year'])
 
     if data.get('grade') is not None:
-        if not isinstance(data['grade'], (int, float)):
+        if isinstance(data['grade'], str):
+            try:
+                data['grade'] = float(data['grade'])
+            except ValueError:
+                raise ValueError(f"grade must be number or null, got non-numeric string '{data['grade']}'")
+        elif not isinstance(data['grade'], (int, float)):
             raise ValueError(f"grade must be number or null, got {type(data['grade'])}")
 
     if data.get('grader') is not None and not isinstance(data['grader'], str):
