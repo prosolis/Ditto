@@ -300,33 +300,26 @@ def extract_grade_from_image(image_path):
 
     image_b64 = downscale_image_to_base64(image_path)
 
-    prompt = """You are examining a photograph of a collectible item that may be professionally graded (in a protective slab/case).
+    prompt = """Look at this image of a collectible item. Read the grading label on the slab/case and extract EXACTLY what is printed on it.
 
-Look at this image carefully and extract the following information from the grading label/slab:
+Return ONLY a JSON object with these four fields:
 
-1. GRADE: The numerical grade on the label (e.g., 9.8, 9.6, 9.4, 9.2, 9.0, 8.5, 8.0, 7.5, 7.0, etc.)
-2. GRADING AUTHORITY: The grading company name or logo visible on the slab. Common ones:
-   - Comics: CGC (Certified Guaranty Company), CBCS (Comic Book Certification Service), PGX (Professional Grading Experts)
-   - Trading Cards: PSA (Professional Sports Authenticator), BGS (Beckett Grading Services), SGC (Sportscard Guaranty Corporation), CGC (CGC Trading Cards)
-3. CERTIFICATION NUMBER: The serial/certification number printed on the label (if visible)
-4. LABEL COLOR: The color of the grading label (e.g., blue universal, gold signature, green qualified, purple restored for CGC; or equivalent for other companies)
-
-Return ONLY valid JSON in this exact format:
 {
-  "grade": 9.8,
-  "grading_authority": "CGC",
-  "certification_number": "1234567890",
-  "label_color": "blue universal"
+  "grade": null,
+  "grading_authority": null,
+  "certification_number": null,
+  "label_color": null
 }
 
-RULES:
-- If you can clearly read the grade number, return it as a float (e.g., 9.8, not "9.8")
-- If you can identify the grading company, return its standard abbreviation (CGC, CBCS, PGX, PSA, BGS, SGC)
-- If the item is NOT in a grading slab (raw/ungraded), return all null values:
-  {"grade": null, "grading_authority": null, "certification_number": null, "label_color": null}
-- If you can see a slab but cannot read a specific field, set that field to null
-- Do NOT guess or infer grades - only report what you can actually read on the label
-- Return ONLY the JSON object, no other text"""
+For each field, replace null with the actual value you read from the label:
+- "grade": The numerical grade printed on the label, as a number (e.g., 8.0 or 9.6)
+- "grading_authority": The grading company abbreviation (CGC, CBCS, PGX, PSA, BGS, or SGC)
+- "certification_number": The serial number printed on the label, as a string
+- "label_color": The color of the grading label (e.g., "blue universal", "gold signature")
+
+If a field is not visible or the item is not in a grading slab, leave it as null.
+Do NOT guess or copy from examples - only report what you can actually read on the label.
+Return ONLY the JSON object, no other text."""
 
     try:
         # Ollama multimodal API - use /api/chat format for vision models
